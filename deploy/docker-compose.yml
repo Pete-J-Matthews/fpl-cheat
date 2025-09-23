@@ -1,0 +1,42 @@
+services:
+  django:
+    build:
+      context: ..
+    container_name: fpl-cheat-django
+    command: >
+      sh -c "uv run python manage.py migrate &&
+             uv run python manage.py runserver 0.0.0.0:8000"
+    environment:
+      - DATABASE_URL=sqlite:///db.sqlite3
+      - DJANGO_SECRET_KEY=dev-secret-key
+      - DJANGO_DEBUG=true
+      - DJANGO_ALLOWED_HOSTS=*
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../:/app
+    restart: unless-stopped
+
+  streamlit:
+    build:
+      context: ..
+    container_name: fpl-cheat-streamlit
+    command: ["uv", "run", "streamlit", "run", "app.py", "--server.address=0.0.0.0", "--server.port=8501"]
+    environment:
+      - DATABASE_URL=sqlite:///db.sqlite3
+      - DJANGO_SECRET_KEY=dev-secret-key
+      - DJANGO_DEBUG=true
+      - DJANGO_ALLOWED_HOSTS=*
+    ports:
+      - "8501:8501"
+    volumes:
+      - ../:/app
+    depends_on:
+      - django
+    restart: unless-stopped
+
+networks:
+  default:
+    name: fpl-cheat-net
+    external: true
+

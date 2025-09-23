@@ -10,7 +10,15 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-secret-key")
 DEBUG = os.getenv("DJANGO_DEBUG", "true").lower() == "true"
-ALLOWED_HOSTS = [h for h in os.getenv("DJANGO_ALLOWED_HOSTS", "*").split(",") if h]
+
+# Vercel-specific configuration
+if os.getenv("VERCEL"):
+    ALLOWED_HOSTS = ["*"]
+    # Disable CSRF for API endpoints in Vercel
+    CSRF_COOKIE_SECURE = False
+    SESSION_COOKIE_SECURE = False
+else:
+    ALLOWED_HOSTS = [h for h in os.getenv("DJANGO_ALLOWED_HOSTS", "*").split(",") if h]
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -19,6 +27,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "backend",  # Our app with models
 ]
 
 MIDDLEWARE = [
@@ -31,7 +40,7 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-ROOT_URLCONF = "fpl_backend.urls"
+ROOT_URLCONF = "backend.urls"
 
 TEMPLATES = [
     {
@@ -49,7 +58,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = "fpl_backend.wsgi.application"
+WSGI_APPLICATION = "backend.wsgi.application"
 
 DATABASES = {
     "default": dj_database_url.parse(
@@ -69,5 +78,9 @@ USE_TZ = True
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
-DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+# Vercel static files
+if os.getenv("VERCEL"):
+    STATICFILES_DIRS = [BASE_DIR / "static"]
+    STATICFILES_STORAGE = "django.contrib.staticfiles.storage.StaticFilesStorage"
 
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

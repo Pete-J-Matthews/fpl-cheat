@@ -1,18 +1,20 @@
 [project]
-name = "fpl-backend"
+name = "fpl-cheat"
 version = "0.1.0"
-description = "Django API for FPL Cheat"
+description = "FPL Cheat - Compare your Fantasy Premier League team with content creators"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+  # Django backend dependencies
   "Django>=5.0",
   "gunicorn>=21.2",
   "dj-database-url>=2.2",
   "psycopg2-binary>=2.9",
   "python-dotenv>=1.0",
   "requests>=2.32",
+  # Streamlit frontend dependencies
+  "streamlit==1.38.0",
 ]
 
 [tool.uv]
 dev-dependencies = []
-

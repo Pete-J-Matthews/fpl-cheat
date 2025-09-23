@@ -6,6 +6,11 @@
 **/.env.local
 **/.cache
 
+# Python virtual environments
+.venv/
+venv/
+env/
+
 # Git
 **/.git
 **/.gitignore
