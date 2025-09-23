@@ -1,0 +1,83 @@
+---
+description: Project context and guardrails distilled from PROJECT_CONTEXT.txt for FPL Cheat
+globs:
+  - "**/*"
+alwaysApply: true
+---
+
+### Project Goal
+- Build a simple app that uses the Fantasy Premier League (FPL) API so a user can enter their team name, fetch their squad, compare it against a set of content creator teams, and see a similarity score with the closest match.
+
+### Tech Stack (must-use)
+- Frontend: Streamlit (rapid UI, deployable on Vercel)
+- Backend: Django + PostgreSQL (API, ORM, business logic)
+- Database host: Supabase (managed Postgres)
+- Containerization: Docker for local dev and reproducible runs
+- Python environment: uv for dependency management
+- Deployment: Vercel (frontend) + Supabase (backend/db hosting)
+
+### Constraints (treat as rules)
+- Keep it simple and beginner-friendly; prioritize readability and maintainability.
+- Prefer open-source/free tools only.
+- Ensure full reproducibility via Docker (one-command up for dev).
+- Use basic, clean boilerplate for infra; avoid over-engineering.
+- Follow clear separation: Streamlit UI ↔ Django ↔ Postgres.
+
+### Core Features (MVP scope)
+1. Fetch and store team data from the FPL API.
+2. Scrape and store a set of content creator teams (creator name + team ID).
+3. User input: enter/search team name → fetch that squad.
+4. Compare user squad against creator squads.
+5. Return similarity score + closest match (and brief breakdown).
+
+### Jobs To Be Done (phased)
+1) Infrastructure setup
+- Docker for local dev (uv-managed Python). A single `docker compose up` should start services.
+- Supabase project prepared with PostgreSQL schema managed via Django migrations.
+- Vercel-ready Streamlit frontend.
+
+2) Data layer
+- Script to scrape/collect creator team names and team IDs.
+- Persist creators and teams via Django ORM into Postgres (Supabase).
+
+3) User workflow
+- Streamlit input for team name; call Django to fetch team from FPL API.
+- Compare user squad with creator squads in backend.
+- Return similarity score and top match to UI.
+
+### Acceptance Criteria (for MVP)
+- Docker-based dev env starts all required services with one command.
+- Entering a valid team name results in: fetched squad, computed similarity, and displayed closest content creator team.
+- Creator teams are stored in database and used for comparison.
+- All configs documented via env vars; no hardcoded secrets.
+
+### Non-goals (out of MVP)
+- Complex infra (K8s, service mesh, multi-cloud) is out.
+- Paid, proprietary services unless strictly necessary.
+- Advanced visualizations beyond a basic breakdown (see Stretch Goals).
+
+### Stretch Goals (optional)
+- Leaderboard ranking creators by similarity.
+- Visualizations (fotball field showing players in their positions).
+
+### Coding/Architecture Guardrails
+- Keep modules small and readable; avoid deep nesting and premature abstraction.
+- Clear boundaries:
+  - Streamlit: UI and API calls only, no DB logic.
+  - Django: business logic, FPL fetch, similarity calc, ORM.
+  - Postgres: persistence managed by Django migrations.
+- Prefer explicit, clear naming (descriptive function/variable names); avoid abbreviations.
+- Handle errors and edge cases first; fail fast with helpful messages.
+- Configuration via environment variables; provide `.env.example`.
+- Add minimal tests for critical logic (e.g., similarity calculation).
+
+### Data and Integration Notes
+- Store creator records: `creator_name`, `team_id`, metadata timestamps.
+- FPL API usage should be rate-conscious
+- Similarity definition: overlap-based or simple scoring first; keep implementation swappable for future improvements.
+
+### Delivery Checklist
+- Docker Compose for services; uv-managed dependencies
+- Django app with migrations and seed for creators.
+- Streamlit app with input, result display, and basic error states.
+- Readme with run, configure, and deploy steps (dev and prod).

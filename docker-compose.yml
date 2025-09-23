@@ -1,0 +1,32 @@
+version: "3.9"
+
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: fpl-backend
+    environment:
+      - DATABASE_URL=sqlite:///db.sqlite3
+      - DJANGO_SECRET_KEY=dev-secret-key
+      - DJANGO_DEBUG=true
+      - DJANGO_ALLOWED_HOSTS=*
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: fpl-frontend
+    environment:
+      - BACKEND_URL=${BACKEND_URL:-http://backend:8000}
+    ports:
+      - "8501:8501"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+networks:
+  default:
+    name: fpl-cheat-net
+
