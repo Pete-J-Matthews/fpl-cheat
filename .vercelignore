@@ -1,0 +1,44 @@
+# Environments and caches
+**/__pycache__
+**/.venv
+**/venv
+**/.env
+**/.env.local
+**/.cache
+
+# Git
+**/.git
+**/.gitignore
+
+# Docker related
+**/Dockerfile
+**/docker-compose.yml
+**/.dockerignore
+
+# Development files
+**/.pytest_cache
+**/.coverage
+**/coverage
+**/htmlcov
+**/.mypy_cache
+**/node_modules
+**/.uv
+
+# Database files
+**/*.sqlite3
+**/*.db
+
+# Heavy files that cause deployment issues
+**/uv.lock
+**/deploy/
+**/backend/migrations/
+**/backend/__pycache__/
+
+# Documentation
+SETUP.md
+SUPABASE_SETUP.md
+docs/
+
+# Vercel directories we don't need
+**/.vercel
+**/.output
