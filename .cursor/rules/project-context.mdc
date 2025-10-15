@@ -1,0 +1,46 @@
+---
+description: Streamlined project context for FPL Cheat
+globs:
+  - "**/*"
+alwaysApply: true
+---
+
+### Goal
+Build a Streamlit app that uses the Fantasy Premier League (FPL) API to:
+- Fetch a user’s squad by team name.
+- Compare it with a set of content creator teams.
+- Display a similarity score and closest match.
+
+### Stack
+- **App:** Streamlit (UI + logic, deployed on Streamlit Community Cloud)
+- **DB:** PostgreSQL via Supabase
+- **Deps:** uv (Python dependency management)
+
+### Constraints
+- Simple, free, beginner-friendly setup.
+- Single Streamlit app — no separate backend.
+- Supabase as sole data store.
+- Clear, readable code; minimal abstraction.
+- Config via `.env` / Streamlit secrets.
+
+### Core Features
+1. Fetch/store FPL team and creator data.
+2. Input team name → fetch squad.
+3. Compare with stored creator squads.
+4. Display similarity score + top match.
+
+### MVP Criteria
+- App deploys/runs on Streamlit Cloud.
+- Valid team name → fetched squad + similarity result.
+- Data persists in Supabase.
+- No hardcoded secrets.
+
+### Stretch Goals
+- Leaderboard of creator similarity.
+- Simple player layout visualization.
+
+### Guardrails
+- Keep logic modular and explicit.
+- Handle errors gracefully in UI.
+- Respect FPL API rate limits.
+- DRY code thats simple and concise
