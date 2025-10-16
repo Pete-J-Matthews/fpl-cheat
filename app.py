@@ -9,8 +9,8 @@ import pandas as pd
 import numpy as np
 from typing import Dict, List, Optional, Tuple
 import os
-from supabase import create_client, Client
 import time
+from database import get_database, DatabaseInterface
 
 # Page config
 st.set_page_config(
@@ -25,26 +25,20 @@ FPL_BASE_URL = "https://fantasy.premierleague.com/api"
 FPL_BOOTSTRAP_URL = f"{FPL_BASE_URL}/bootstrap-static/"
 FPL_TEAM_URL = f"{FPL_BASE_URL}/entry/{{team_id}}/event/{{gameweek}}/picks/"
 
-# Initialize Supabase client
+# Initialize database client
 @st.cache_resource
-def init_supabase() -> Optional[Client]:
-    """Initialize Supabase client using Streamlit secrets."""
+def init_database() -> Optional[DatabaseInterface]:
+    """Initialize database client (SQLite for local, Supabase for production)."""
     try:
-        # Check if secrets are available
-        if "supabase" not in st.secrets:
-            st.error("Supabase credentials not found in Streamlit secrets. Please check your .streamlit/secrets.toml file.")
-            return None
-            
-        url = st.secrets["supabase"]["url"]
-        key = st.secrets["supabase"]["key"]
+        db = get_database()
         
-        if not url or not key or url == "your_supabase_project_url_here":
-            st.error("Please update your Supabase credentials in .streamlit/secrets.toml")
-            return None
-            
-        return create_client(url, key)
+        # Show which database we're using
+        db_type = "SQLite (Local)" if isinstance(db, __import__('database').SQLiteDatabase) else "Supabase (Production)"
+        st.sidebar.info(f"🗄️ Using: {db_type}")
+        
+        return db
     except Exception as e:
-        st.error(f"Failed to initialize Supabase: {e}")
+        st.error(f"Failed to initialize database: {e}")
         return None
 
 # FPL API functions
@@ -82,26 +76,17 @@ def fetch_team_squad(team_id: int, gameweek: int = 1) -> Optional[Dict]:
         return None
 
 # Database functions
-def save_creator_team(supabase: Client, user_name: str, team_name: str) -> bool:
-    """Save creator team data to Supabase."""
-    try:
-        result = supabase.table('creator_teams').insert({
-            'user_name': user_name,
-            'team_name': team_name
-        }).execute()
-        return True
-    except Exception as e:
-        st.error(f"Failed to save creator team: {e}")
-        return False
+def save_creator_team(db: DatabaseInterface, user_name: str, team_name: str) -> bool:
+    """Save creator team data to database."""
+    return db.save_creator_team(user_name, team_name)
 
-def get_creator_teams(supabase: Client) -> List[Dict]:
-    """Fetch all creator teams from Supabase."""
-    try:
-        result = supabase.table('creator_teams').select('*').execute()
-        return result.data if result.data else []
-    except Exception as e:
-        st.error(f"Failed to fetch creator teams: {e}")
-        return []
+def get_creator_teams(db: DatabaseInterface) -> List[Dict]:
+    """Fetch all creator teams from database."""
+    return db.get_creator_teams()
+
+def delete_creator_team(db: DatabaseInterface, user_id: int) -> bool:
+    """Delete a creator team by ID."""
+    return db.delete_creator_team(user_id)
 
 # Similarity calculation
 def calculate_similarity(squad1: List[int], squad2: List[int]) -> float:
@@ -206,7 +191,7 @@ def render_team_comparison(user_squad: List[int], creator_teams: List[Dict], fpl
     else:
         st.error("No matches found.")
 
-def render_creator_management(supabase: Client, fpl_data: Dict):
+def render_creator_management(db: DatabaseInterface, fpl_data: Dict):
     """Render creator team management section."""
     st.header("👥 Manage Creator Teams")
     
@@ -220,7 +205,7 @@ def render_creator_management(supabase: Client, fpl_data: Dict):
                 # Verify the team exists in FPL
                 team_id = find_team_id(team_name, fpl_data)
                 if team_id:
-                    if save_creator_team(supabase, user_name, team_name):
+                    if save_creator_team(db, user_name, team_name):
                         st.success(f"Added {user_name} successfully!")
                         st.rerun()
                     else:
@@ -232,7 +217,7 @@ def render_creator_management(supabase: Client, fpl_data: Dict):
     
     # Display existing creator teams
     st.subheader("Current Creator Teams")
-    creator_teams = get_creator_teams(supabase)
+    creator_teams = get_creator_teams(db)
     
     if creator_teams:
         for team in creator_teams:
@@ -241,8 +226,11 @@ def render_creator_management(supabase: Client, fpl_data: Dict):
                 st.write(f"**{team['user_name']}** - {team['team_name']}")
             with col2:
                 if st.button("Remove", key=f"remove_{team['user_id']}"):
-                    # Add removal logic here
-                    st.info("Removal functionality to be implemented")
+                    if delete_creator_team(db, team['user_id']):
+                        st.success(f"Removed {team['user_name']} successfully!")
+                        st.rerun()
+                    else:
+                        st.error("Failed to remove creator team.")
     else:
         st.info("No creator teams added yet.")
 
@@ -258,9 +246,9 @@ def main():
     
     st.markdown("Compare your Fantasy Premier League team with content creator teams!")
     
-    # Initialize Supabase
-    supabase = init_supabase()
-    if not supabase:
+    # Initialize database
+    db = init_database()
+    if not db:
         st.stop()
     
     # Fetch FPL data
@@ -295,7 +283,7 @@ def main():
                         user_squad = [pick.get('element') for pick in picks if pick.get('element')]
                         
                         # Get creator teams and compare
-                        creator_teams = get_creator_teams(supabase)
+                        creator_teams = get_creator_teams(db)
                         render_team_comparison(user_squad, creator_teams, fpl_data)
                     else:
                         st.error("Failed to fetch squad data.")
@@ -303,7 +291,7 @@ def main():
                     st.error(f"Team '{team_name}' not found. Please check the spelling.")
     
     elif page == "Manage Creators":
-        render_creator_management(supabase, fpl_data)
+        render_creator_management(db, fpl_data)
 
 if __name__ == "__main__":
     main()

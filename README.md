@@ -16,7 +16,7 @@ A Streamlit app that compares your Fantasy Premier League team with content crea
 
 - Python 3.9+
 - [uv](https://docs.astral.sh/uv/) for dependency management
-- Supabase account (free tier available)
+- Supabase account (free tier available) - **only for production**
 
 ### Installation
 
@@ -31,25 +31,55 @@ A Streamlit app that compares your Fantasy Premier League team with content crea
    uv sync
    ```
 
-3. **Set up environment variables**
+3. **Set up local development (SQLite)**
    ```bash
-   cp env.example .env
-   # Edit .env with your Supabase credentials
-   ```
-
-4. **Set up Supabase database**
-   - Create a new Supabase project
-   - Run the SQL script in `supabase/schema.sql` to create the required tables
-   - Copy your project URL and anon key to `.env`
-
-5. **Run the app**
-   ```bash
+   # Quick setup (recommended)
+   ./deploy/setup.sh
+   
+   # Or manual setup
+   python3 deploy/local_setup.py
+   
+   # Run the app locally
    uv run streamlit run app.py
    ```
 
-## Supabase Setup
+4. **Set up production (Supabase) - Optional**
+   ```bash
+   # Create .streamlit/secrets.toml file
+   mkdir -p .streamlit
+   cat > .streamlit/secrets.toml << EOF
+   [supabase]
+   url = "your_supabase_project_url_here"
+   key = "your_supabase_anon_key_here"
+   EOF
+   ```
+   
+   - Create a new Supabase project
+   - Run the SQL script in `supabase/schema.sql` to create the required tables
+   - Update the secrets.toml file with your credentials
 
-### Database Schema
+## Database Setup
+
+### Local Development (SQLite)
+
+The app automatically uses SQLite for local development. Use the automated setup script:
+
+```bash
+# Quick setup (recommended)
+./deploy/setup.sh
+
+# Or run the Python setup directly
+python3 deploy/local_setup.py
+```
+
+The setup script will:
+- Check prerequisites (Python 3.9+, uv)
+- Install all dependencies
+- Create SQLite database with sample data
+- Configure Streamlit for local development
+- Verify everything works correctly
+
+### Production (Supabase)
 
 Create the following table in your Supabase project:
 
@@ -136,11 +166,16 @@ uv run flake8 .
 ```
 fpl-cheat/
 ├── app.py              # Main Streamlit application
+├── database.py         # Database abstraction layer (SQLite/Supabase)
 ├── pyproject.toml      # Dependencies and project config
-├── env.example         # Environment variables template
 ├── README.md           # This file
+├── fpl_cheat.db        # Local SQLite database (created by setup)
+├── deploy/             # Deployment and setup scripts
+│   ├── setup.sh        # Quick setup script
+│   ├── local_setup.py  # Comprehensive setup script
+│   └── README.md       # Deployment documentation
 └── supabase/
-    └── schema.sql      # Database schema
+    └── schema.sql      # Supabase database schema
 ```
 
 ## Contributing
