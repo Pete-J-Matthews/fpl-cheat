@@ -18,7 +18,7 @@ class DatabaseInterface(ABC):
     """Abstract base class for database operations."""
     
     @abstractmethod
-    def save_creator_team(self, user_name: str, team_name: str) -> bool:
+    def save_creator_team(self, manager_name: str, team_name: str) -> bool:
         """Save a creator team to the database."""
         pass
     
@@ -28,7 +28,7 @@ class DatabaseInterface(ABC):
         pass
     
     @abstractmethod
-    def delete_creator_team(self, user_id: int) -> bool:
+    def delete_creator_team(self, manager_id: int) -> bool:
         """Delete a creator team by ID."""
         pass
 
@@ -45,38 +45,38 @@ class SQLiteDatabase(DatabaseInterface):
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
-        # Create creator_teams table
+        # Create all_managers table
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS creator_teams (
-                user_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_name TEXT NOT NULL,
+            CREATE TABLE IF NOT EXISTS all_managers (
+                manager_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                manager_name TEXT NOT NULL,
                 team_name TEXT NOT NULL
             )
         """)
         
         # Create indexes
         cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_creator_teams_team_name 
-            ON creator_teams(team_name)
+            CREATE INDEX IF NOT EXISTS idx_all_managers_team_name 
+            ON all_managers(team_name)
         """)
         cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_creator_teams_user_name 
-            ON creator_teams(user_name)
+            CREATE INDEX IF NOT EXISTS idx_all_managers_manager_name 
+            ON all_managers(manager_name)
         """)
         
         conn.commit()
         conn.close()
     
-    def save_creator_team(self, user_name: str, team_name: str) -> bool:
+    def save_creator_team(self, manager_name: str, team_name: str) -> bool:
         """Save a creator team to SQLite database."""
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
             cursor.execute("""
-                INSERT INTO creator_teams (user_name, team_name)
+                INSERT INTO all_managers (manager_name, team_name)
                 VALUES (?, ?)
-            """, (user_name, team_name))
+            """, (manager_name, team_name))
             
             conn.commit()
             conn.close()
@@ -92,7 +92,7 @@ class SQLiteDatabase(DatabaseInterface):
             conn.row_factory = sqlite3.Row  # Enable dict-like access
             cursor = conn.cursor()
             
-            cursor.execute("SELECT * FROM creator_teams")
+            cursor.execute("SELECT * FROM all_managers")
             rows = cursor.fetchall()
             
             conn.close()
@@ -103,13 +103,13 @@ class SQLiteDatabase(DatabaseInterface):
             print(f"SQLite error fetching creator teams: {e}")
             return []
     
-    def delete_creator_team(self, user_id: int) -> bool:
+    def delete_creator_team(self, manager_id: int) -> bool:
         """Delete a creator team by ID from SQLite database."""
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
-            cursor.execute("DELETE FROM creator_teams WHERE user_id = ?", (user_id,))
+            cursor.execute("DELETE FROM all_managers WHERE manager_id = ?", (manager_id,))
             
             conn.commit()
             conn.close()
@@ -128,11 +128,11 @@ class SupabaseDatabase(DatabaseInterface):
         
         self.client = create_client(url, key)
     
-    def save_creator_team(self, user_name: str, team_name: str) -> bool:
+    def save_creator_team(self, manager_name: str, team_name: str) -> bool:
         """Save a creator team to Supabase database."""
         try:
-            result = self.client.table('creator_teams').insert({
-                'user_name': user_name,
+            result = self.client.table('all_managers').insert({
+                'manager_name': manager_name,
                 'team_name': team_name
             }).execute()
             return True
@@ -143,16 +143,16 @@ class SupabaseDatabase(DatabaseInterface):
     def get_creator_teams(self) -> List[Dict]:
         """Get all creator teams from Supabase database."""
         try:
-            result = self.client.table('creator_teams').select('*').execute()
+            result = self.client.table('all_managers').select('*').execute()
             return result.data if result.data else []
         except Exception as e:
             print(f"Supabase error fetching creator teams: {e}")
             return []
     
-    def delete_creator_team(self, user_id: int) -> bool:
+    def delete_creator_team(self, manager_id: int) -> bool:
         """Delete a creator team by ID from Supabase database."""
         try:
-            result = self.client.table('creator_teams').delete().eq('user_id', user_id).execute()
+            result = self.client.table('all_managers').delete().eq('manager_id', manager_id).execute()
             return True
         except Exception as e:
             print(f"Supabase error deleting creator team: {e}")
@@ -187,9 +187,9 @@ def get_database() -> DatabaseInterface:
 
 
 # Convenience functions for backward compatibility
-def save_creator_team(db: DatabaseInterface, user_name: str, team_name: str) -> bool:
+def save_creator_team(db: DatabaseInterface, manager_name: str, team_name: str) -> bool:
     """Save creator team using database interface."""
-    return db.save_creator_team(user_name, team_name)
+    return db.save_creator_team(manager_name, team_name)
 
 
 def get_creator_teams(db: DatabaseInterface) -> List[Dict]:
@@ -197,6 +197,6 @@ def get_creator_teams(db: DatabaseInterface) -> List[Dict]:
     return db.get_creator_teams()
 
 
-def delete_creator_team(db: DatabaseInterface, user_id: int) -> bool:
+def delete_creator_team(db: DatabaseInterface, manager_id: int) -> bool:
     """Delete creator team using database interface."""
-    return db.delete_creator_team(user_id)
+    return db.delete_creator_team(manager_id)

@@ -76,17 +76,17 @@ def fetch_team_squad(team_id: int, gameweek: int = 1) -> Optional[Dict]:
         return None
 
 # Database functions
-def save_creator_team(db: DatabaseInterface, user_name: str, team_name: str) -> bool:
+def save_creator_team(db: DatabaseInterface, manager_name: str, team_name: str) -> bool:
     """Save creator team data to database."""
-    return db.save_creator_team(user_name, team_name)
+    return db.save_creator_team(manager_name, team_name)
 
 def get_creator_teams(db: DatabaseInterface) -> List[Dict]:
     """Fetch all creator teams from database."""
     return db.get_creator_teams()
 
-def delete_creator_team(db: DatabaseInterface, user_id: int) -> bool:
+def delete_creator_team(db: DatabaseInterface, manager_id: int) -> bool:
     """Delete a creator team by ID."""
-    return db.delete_creator_team(user_id)
+    return db.delete_creator_team(manager_id)
 
 # Similarity calculation
 def calculate_similarity(squad1: List[int], squad2: List[int]) -> float:
@@ -159,12 +159,12 @@ def render_team_comparison(user_squad: List[int], creator_teams: List[Dict], fpl
     best_match, similarity_score = find_best_match(user_squad, creator_teams, fpl_data)
     
     if best_match:
-        st.success(f"🎯 Best Match: {best_match['user_name']} ({best_match['team_name']})")
+        st.success(f"🎯 Best Match: {best_match['manager_name']} ({best_match['team_name']})")
         st.metric("Similarity Score", f"{similarity_score:.2%}")
         
         # Show detailed comparison
         with st.expander("Detailed Comparison"):
-            st.write(f"**Your team similarity with {best_match['user_name']}:**")
+            st.write(f"**Your team similarity with {best_match['manager_name']}:**")
             
             # Create comparison table
             comparison_data = []
@@ -176,7 +176,7 @@ def render_team_comparison(user_squad: List[int], creator_teams: List[Dict], fpl
                     similarity = calculate_similarity(user_squad, creator_squad)
                     
                     comparison_data.append({
-                        'Creator': team['user_name'],
+                        'Creator': team['manager_name'],
                         'FPL Team': team['team_name'],
                         'Similarity': f"{similarity:.2%}",
                         'Players in Common': len(set(user_squad).intersection(set(creator_squad)))
@@ -197,16 +197,16 @@ def render_creator_management(db: DatabaseInterface, fpl_data: Dict):
     
     with st.form("add_creator_team"):
         st.subheader("Add New Creator Team")
-        user_name = st.text_input("Creator Name", placeholder="e.g., FPL General")
+        manager_name = st.text_input("Creator Name", placeholder="e.g., FPL General")
         team_name = st.text_input("FPL Team Name", placeholder="Enter their FPL team name")
         
         if st.form_submit_button("Add Creator Team"):
-            if user_name and team_name:
+            if manager_name and team_name:
                 # Verify the team exists in FPL
                 team_id = find_team_id(team_name, fpl_data)
                 if team_id:
-                    if save_creator_team(db, user_name, team_name):
-                        st.success(f"Added {user_name} successfully!")
+                    if save_creator_team(db, manager_name, team_name):
+                        st.success(f"Added {manager_name} successfully!")
                         st.rerun()
                     else:
                         st.error("Failed to save creator team.")
@@ -223,11 +223,11 @@ def render_creator_management(db: DatabaseInterface, fpl_data: Dict):
         for team in creator_teams:
             col1, col2 = st.columns([3, 1])
             with col1:
-                st.write(f"**{team['user_name']}** - {team['team_name']}")
+                st.write(f"**{team['manager_name']}** - {team['team_name']}")
             with col2:
-                if st.button("Remove", key=f"remove_{team['user_id']}"):
-                    if delete_creator_team(db, team['user_id']):
-                        st.success(f"Removed {team['user_name']} successfully!")
+                if st.button("Remove", key=f"remove_{team['manager_id']}"):
+                    if delete_creator_team(db, team['manager_id']):
+                        st.success(f"Removed {team['manager_name']} successfully!")
                         st.rerun()
                     else:
                         st.error("Failed to remove creator team.")
