@@ -48,7 +48,7 @@ MAX_DELAY = 2.0  # Maximum delay between requests (seconds)
 MAX_RETRIES = 3  # Maximum number of retries for failed requests
 
 # Batch processing configuration
-BATCH_SIZE = 500000  # Number of managers to process per batch
+BATCH_SIZE = 50000  # Number of managers to process per batch
 
 
 class FPLDataFetcher:
@@ -66,7 +66,7 @@ class FPLDataFetcher:
     
     def fetch_page_curl(self, page: int) -> Optional[Dict]:
         """Fetch a single page using curl with retry logic."""
-        url = f"{FPL_API_BASE}{STANDINGS_ENDPOINT}?page={page}"
+        url = f"{FPL_API_BASE}{STANDINGS_ENDPOINT}?page_standings={page}"
         
         for attempt in range(MAX_RETRIES):
             try:
@@ -124,13 +124,14 @@ class FPLDataFetcher:
         # Try curl method first since requests seems to be blocked
         return self.fetch_page_curl(page)
     
-    def fetch_managers_batch(self, start_page: int, target_count: int) -> Tuple[List[Dict], int, bool]:
+    def fetch_managers_batch(self, start_page: int, target_count: int, db_manager=None) -> Tuple[List[Dict], int, bool]:
         """
         Fetch a batch of managers starting from a specific page.
         
         Args:
             start_page: Page number to start from
             target_count: Target number of managers to fetch
+            db_manager: Database manager for progress updates (optional)
             
         Returns:
             Tuple of (managers_list, last_page_processed, has_more_pages)
@@ -179,6 +180,14 @@ class FPLDataFetcher:
             self.processed_managers += len(page_managers)
             
             logger.info(f"Fetched page {page}: {len(page_managers)} managers (Batch total: {len(all_managers)})")
+            
+            # Save progress every 50 pages to prevent data loss
+            if db_manager and page % 50 == 0:
+                logger.info(f"💾 Saving progress at page {page}...")
+                inserted = db_manager.upsert_managers(all_managers)
+                db_manager.update_progress(page, len(all_managers))
+                logger.info(f"✅ Progress saved: {inserted:,} managers in database")
+                # Don't clear all_managers - we want to keep accumulating data
             
             # Check if we've reached our target
             if len(all_managers) >= target_count:
@@ -259,13 +268,13 @@ class DatabaseManager:
         raise ValueError("Supabase key not found. Set SUPABASE_KEY environment variable or configure Streamlit secrets.")
     
     def _init_table(self):
-        """Initialize the fpl_managers table and progress tracking."""
+        """Initialize the all_managers table and progress tracking."""
         if self.environment == "local":
             cursor = self.connection.cursor()
             
-            # Create fpl_managers table
+            # Create all_managers table
             cursor.execute("""
-                CREATE TABLE IF NOT EXISTS fpl_managers (
+                CREATE TABLE IF NOT EXISTS all_managers (
                     manager_id INTEGER PRIMARY KEY,
                     manager_name TEXT,
                     team_name TEXT
@@ -292,10 +301,10 @@ class DatabaseManager:
             """)
             
             self.connection.commit()
-            logger.info("Initialized fpl_managers and fetch_progress tables in SQLite")
+            logger.info("Initialized all_managers and fetch_progress tables in SQLite")
         else:
             # For Supabase, we assume the tables already exist
-            logger.info("Using existing fpl_managers and fetch_progress tables in Supabase")
+            logger.info("Using existing all_managers and fetch_progress tables in Supabase")
     
     def upsert_managers(self, managers: List[Dict]) -> int:
         """Insert or update managers in the database."""
@@ -313,7 +322,7 @@ class DatabaseManager:
         
         # Use INSERT OR REPLACE for upsert behavior
         cursor.executemany("""
-            INSERT OR REPLACE INTO fpl_managers (manager_id, manager_name, team_name)
+            INSERT OR REPLACE INTO all_managers (manager_id, manager_name, team_name)
             VALUES (?, ?, ?)
         """, [(m['manager_id'], m['manager_name'], m['team_name']) for m in managers])
         
@@ -324,7 +333,7 @@ class DatabaseManager:
         """Upsert managers in Supabase database."""
         try:
             # Supabase doesn't have native upsert, so we'll use insert with on_conflict
-            result = self.client.table('fpl_managers').upsert(
+            result = self.client.table('all_managers').upsert(
                 managers,
                 on_conflict='manager_id'
             ).execute()
@@ -338,11 +347,11 @@ class DatabaseManager:
         """Get the current number of managers in the database."""
         if self.environment == "local":
             cursor = self.connection.cursor()
-            cursor.execute("SELECT COUNT(*) FROM fpl_managers")
+            cursor.execute("SELECT COUNT(*) FROM all_managers")
             return cursor.fetchone()[0]
         else:
             try:
-                result = self.client.table('fpl_managers').select('manager_id', count='exact').execute()
+                result = self.client.table('all_managers').select('manager_id', count='exact').execute()
                 return result.count
             except Exception as e:
                 logger.error(f"Failed to get manager count from Supabase: {e}")
@@ -380,7 +389,7 @@ class DatabaseManager:
             cursor = self.connection.cursor()
             
             # Get current total
-            cursor.execute("SELECT COUNT(*) FROM fpl_managers")
+            cursor.execute("SELECT COUNT(*) FROM all_managers")
             total_managers = cursor.fetchone()[0]
             
             cursor.execute("""
@@ -397,7 +406,7 @@ class DatabaseManager:
         else:
             try:
                 # Get current total
-                result = self.client.table('fpl_managers').select('manager_id', count='exact').execute()
+                result = self.client.table('all_managers').select('manager_id', count='exact').execute()
                 total_managers = result.count
                 
                 update_data = {
@@ -461,8 +470,8 @@ def main():
         fetcher = FPLDataFetcher()
         
         if args.test:
-            logger.info("TEST MODE: Fetching only first page")
-            data = fetcher.fetch_page(1)
+            logger.info(f"TEST MODE: Fetching page {start_page} (resume page)")
+            data = fetcher.fetch_page(start_page)
             if data:
                 standings = data.get('standings', {})
                 results = standings.get('results', [])
@@ -497,7 +506,7 @@ def main():
                 
                 # Fetch batch
                 managers, last_page, has_more_pages = fetcher.fetch_managers_batch(
-                    start_page, BATCH_SIZE
+                    start_page, BATCH_SIZE, db_manager
                 )
                 
                 if managers:
