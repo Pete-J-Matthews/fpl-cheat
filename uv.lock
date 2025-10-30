@@ -480,6 +480,7 @@ dependencies = [
     { name = "requests" },
     { name = "streamlit" },
     { name = "supabase" },
+    { name = "toml" },
 ]
 
 [package.optional-dependencies]
@@ -499,6 +500,7 @@ requires-dist = [
     { name = "requests", specifier = ">=2.31.0" },
     { name = "streamlit", specifier = ">=1.28.0" },
     { name = "supabase", specifier = ">=2.0.0" },
+    { name = "toml", specifier = ">=0.10.2" },
 ]
 provides-extras = ["dev"]
 

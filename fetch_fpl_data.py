@@ -4,6 +4,8 @@ FPL Data Fetcher
 
 Fetches manager data from the Fantasy Premier League API and stores it in the database.
 Supports both local (SQLite) and production (Supabase) environments.
+Runs continuously until all data is fetched, rate limited, or manually stopped.
+Progress is automatically saved at regular intervals.
 
 Usage:
     python fetch_fpl_data.py local
@@ -14,6 +16,7 @@ Usage:
 import argparse
 import json
 import logging
+import os
 import random
 import subprocess
 import sys
@@ -44,11 +47,11 @@ STANDINGS_ENDPOINT = f"/leagues-classic/{LEAGUE_ID}/standings/"
 
 # Rate limiting configuration
 MIN_DELAY = 0.5  # Minimum delay between requests (seconds)
-MAX_DELAY = 2.0  # Maximum delay between requests (seconds)
+MAX_DELAY = 1.6  # Maximum delay between requests (seconds)
 MAX_RETRIES = 3  # Maximum number of retries for failed requests
 
-# Batch processing configuration
-BATCH_SIZE = 50000  # Number of managers to process per batch
+# Processing configuration
+PROGRESS_SAVE_INTERVAL = 50  # Save progress every N pages
 
 
 class FPLDataFetcher:
@@ -124,13 +127,13 @@ class FPLDataFetcher:
         # Try curl method first since requests seems to be blocked
         return self.fetch_page_curl(page)
     
-    def fetch_managers_batch(self, start_page: int, target_count: int, db_manager=None) -> Tuple[List[Dict], int, bool]:
+    def fetch_all_managers(self, start_page: int, db_manager=None) -> Tuple[List[Dict], int, bool]:
         """
-        Fetch a batch of managers starting from a specific page.
+        Fetch all available managers starting from a specific page.
+        Continues until no more pages are available or rate limited.
         
         Args:
             start_page: Page number to start from
-            target_count: Target number of managers to fetch
             db_manager: Database manager for progress updates (optional)
             
         Returns:
@@ -139,24 +142,35 @@ class FPLDataFetcher:
         all_managers = []
         page = start_page
         has_more_pages = True
+        consecutive_failures = 0
+        max_consecutive_failures = 5  # Stop after 5 consecutive failures
         
-        logger.info(f"Starting batch fetch from page {start_page}, target: {target_count} managers...")
+        logger.info(f"Starting continuous fetch from page {start_page}...")
+        logger.info(f"Will save progress every {PROGRESS_SAVE_INTERVAL} pages")
         
-        while len(all_managers) < target_count:
+        while has_more_pages and consecutive_failures < max_consecutive_failures:
             # Add random delay before each request
             if page > start_page:
                 self._random_delay()
             
             data = self.fetch_page(page)
             if not data:
-                logger.error(f"Failed to fetch page {page}, stopping batch...")
-                break
+                consecutive_failures += 1
+                logger.error(f"Failed to fetch page {page} (failure #{consecutive_failures}/{max_consecutive_failures})")
+                
+                if consecutive_failures >= max_consecutive_failures:
+                    logger.error(f"Too many consecutive failures ({consecutive_failures}), stopping...")
+                    break
+                continue
+            
+            # Reset failure counter on successful fetch
+            consecutive_failures = 0
             
             standings = data.get('standings', {})
             results = standings.get('results', [])
             
             if not results:
-                logger.info(f"No more results on page {page}, batch complete...")
+                logger.info(f"No more results on page {page}, fetch complete...")
                 has_more_pages = False
                 break
             
@@ -179,20 +193,16 @@ class FPLDataFetcher:
             all_managers.extend(page_managers)
             self.processed_managers += len(page_managers)
             
-            logger.info(f"Fetched page {page}: {len(page_managers)} managers (Batch total: {len(all_managers)})")
+            logger.info(f"Fetched page {page}: {len(page_managers)} managers (Total: {len(all_managers)})")
             
-            # Save progress every 50 pages to prevent data loss
-            if db_manager and page % 50 == 0:
+            # Save progress at regular intervals to prevent data loss
+            if db_manager and page % PROGRESS_SAVE_INTERVAL == 0:
                 logger.info(f"💾 Saving progress at page {page}...")
                 inserted = db_manager.upsert_managers(all_managers)
                 db_manager.update_progress(page, len(all_managers))
                 logger.info(f"✅ Progress saved: {inserted:,} managers in database")
-                # Don't clear all_managers - we want to keep accumulating data
-            
-            # Check if we've reached our target
-            if len(all_managers) >= target_count:
-                logger.info(f"Reached target of {target_count} managers")
-                break
+                # Clear the list to free memory, but keep track of total
+                all_managers = []
             
             # Check if there are more pages
             if not standings.get('has_next', False):
@@ -202,7 +212,14 @@ class FPLDataFetcher:
             
             page += 1
         
-        logger.info(f"Batch complete. Fetched {len(all_managers)} managers from pages {start_page}-{page}")
+        # Save any remaining managers
+        if all_managers and db_manager:
+            logger.info(f"💾 Saving final batch of {len(all_managers)} managers...")
+            inserted = db_manager.upsert_managers(all_managers)
+            db_manager.update_progress(page, len(all_managers))
+            logger.info(f"✅ Final progress saved: {inserted:,} managers in database")
+        
+        logger.info(f"Fetch complete. Processed pages {start_page}-{page}")
         return all_managers, page, has_more_pages
 
 
@@ -248,6 +265,18 @@ class DatabaseManager:
         except Exception:
             pass
         
+        # Try reading secrets.toml directly
+        try:
+            import toml
+            secrets_path = os.path.join(os.path.dirname(__file__), '.streamlit', 'secrets.toml')
+            if os.path.exists(secrets_path):
+                with open(secrets_path, 'r') as f:
+                    secrets = toml.load(f)
+                    if 'supabase' in secrets and 'url' in secrets['supabase']:
+                        return secrets['supabase']['url']
+        except Exception as e:
+            logger.debug(f"Failed to read secrets.toml: {e}")
+        
         raise ValueError("Supabase URL not found. Set SUPABASE_URL environment variable or configure Streamlit secrets.")
     
     def _get_supabase_key(self) -> str:
@@ -264,6 +293,18 @@ class DatabaseManager:
                 return st.secrets["supabase"]["key"]
         except Exception:
             pass
+        
+        # Try reading secrets.toml directly
+        try:
+            import toml
+            secrets_path = os.path.join(os.path.dirname(__file__), '.streamlit', 'secrets.toml')
+            if os.path.exists(secrets_path):
+                with open(secrets_path, 'r') as f:
+                    secrets = toml.load(f)
+                    if 'supabase' in secrets and 'key' in secrets['supabase']:
+                        return secrets['supabase']['key']
+        except Exception as e:
+            logger.debug(f"Failed to read secrets.toml: {e}")
         
         raise ValueError("Supabase key not found. Set SUPABASE_KEY environment variable or configure Streamlit secrets.")
     
@@ -332,13 +373,22 @@ class DatabaseManager:
     def _upsert_supabase(self, managers: List[Dict]) -> int:
         """Upsert managers in Supabase database."""
         try:
-            # Supabase doesn't have native upsert, so we'll use insert with on_conflict
-            result = self.client.table('all_managers').upsert(
-                managers,
-                on_conflict='manager_id'
-            ).execute()
-            
-            return len(managers)
+            # Chunk large payloads to avoid statement timeouts
+            chunk_size = 500
+            total = 0
+            for i in range(0, len(managers), chunk_size):
+                chunk = managers[i:i + chunk_size]
+                try:
+                    self.client.table('all_managers').upsert(
+                        chunk,
+                        on_conflict='manager_id'
+                    ).execute()
+                    total += len(chunk)
+                except Exception as chunk_err:
+                    logger.error(f"Failed to upsert managers chunk ({i}-{i+len(chunk)-1}) in Supabase: {chunk_err}")
+                    # Continue with next chunk rather than failing the whole batch
+                    continue
+            return total
         except Exception as e:
             logger.error(f"Failed to upsert managers in Supabase: {e}")
             return 0
@@ -430,16 +480,6 @@ class DatabaseManager:
             self.connection.close()
 
 
-def ask_user_continue() -> bool:
-    """Ask user if they want to continue with the next batch."""
-    while True:
-        response = input("\n🔄 Continue with next batch of 500,000 managers? (y/n): ").lower().strip()
-        if response in ['y', 'yes']:
-            return True
-        elif response in ['n', 'no']:
-            return False
-        else:
-            print("Please enter 'y' for yes or 'n' for no.")
 
 def main():
     """Main function to run the FPL data fetcher."""
@@ -492,63 +532,48 @@ def main():
             else:
                 logger.error("Test mode: Failed to fetch first page")
         else:
-            # Batch processing mode
-            batch_number = 1
-            has_more_pages = True
+            # Continuous fetch mode
+            logger.info(f"\n🚀 Starting continuous fetch from page {start_page}")
+            logger.info("📊 Will fetch all available managers until completion or rate limit")
             
-            while has_more_pages:
-                logger.info(f"\n🚀 Starting Batch #{batch_number}")
-                logger.info(f"📊 Target: {BATCH_SIZE:,} managers")
-                logger.info(f"📄 Starting from page: {start_page}")
-                
-                # Record batch start time
-                batch_start_time = time.strftime('%Y-%m-%d %H:%M:%S')
-                
-                # Fetch batch
-                managers, last_page, has_more_pages = fetcher.fetch_managers_batch(
-                    start_page, BATCH_SIZE, db_manager
-                )
-                
-                if managers:
-                    logger.info(f"💾 Inserting {len(managers):,} managers into database...")
-                    inserted = db_manager.upsert_managers(managers)
-                    logger.info(f"✅ Successfully inserted/updated {inserted:,} managers")
-                    
-                    # Update progress
-                    batch_end_time = time.strftime('%Y-%m-%d %H:%M:%S')
-                    db_manager.update_progress(
-                        last_page, len(managers), batch_start_time, batch_end_time
-                    )
-                    
-                    final_count = db_manager.get_manager_count()
-                    logger.info(f"📈 Total managers in database: {final_count:,}")
-                    
-                    # Ask user if they want to continue
-                    if has_more_pages:
-                        print(f"\n🎉 Batch #{batch_number} completed successfully!")
-                        print(f"📊 Fetched: {len(managers):,} managers")
-                        print(f"📈 Total in database: {final_count:,}")
-                        print(f"📄 Last page processed: {last_page}")
-                        
-                        if not ask_user_continue():
-                            logger.info("👋 User chose to stop. Progress saved.")
-                            break
-                        
-                        # Prepare for next batch
-                        start_page = last_page + 1
-                        batch_number += 1
-                    else:
-                        logger.info("🎉 All pages processed! Data fetch complete.")
-                        break
-                else:
-                    logger.error("❌ No managers fetched in this batch")
-                    break
+            # Record start time
+            start_time = time.strftime('%Y-%m-%d %H:%M:%S')
+            
+            # Fetch all managers
+            managers, last_page, has_more_pages = fetcher.fetch_all_managers(
+                start_page, db_manager
+            )
+            
+            # Record end time
+            end_time = time.strftime('%Y-%m-%d %H:%M:%S')
+            
+            # Update final progress
+            db_manager.update_progress(
+                last_page, len(managers), start_time, end_time
+            )
+            
+            final_count = db_manager.get_manager_count()
+            logger.info(f"📈 Total managers in database: {final_count:,}")
+            
+            if has_more_pages:
+                logger.info("🎉 Fetch completed due to rate limiting or consecutive failures")
+            else:
+                logger.info("🎉 All pages processed! Data fetch complete.")
         
         db_manager.close()
         logger.info("✅ FPL data fetch completed successfully")
         
     except KeyboardInterrupt:
-        logger.info("⏹️  Process interrupted by user. Progress saved.")
+        logger.info("⏹️  Process interrupted by user. Saving progress...")
+        try:
+            # Try to save any remaining progress
+            if 'db_manager' in locals():
+                progress = db_manager.get_progress()
+                logger.info(f"💾 Final progress saved: {progress['total_managers_fetched']} managers")
+                db_manager.close()
+        except Exception as e:
+            logger.error(f"Failed to save progress on interrupt: {e}")
+        logger.info("👋 Process stopped by user. Progress has been saved.")
         sys.exit(0)
     except Exception as e:
         logger.error(f"💥 Fatal error: {e}")
