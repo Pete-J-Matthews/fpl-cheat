@@ -30,8 +30,35 @@ CREATE TABLE fetch_progress (
 INSERT INTO fetch_progress (id, last_page, last_manager_count, total_managers_fetched)
 VALUES (1, 0, 0, 0);
 
+-- Create creator_teams table for storing content creator teams
+CREATE TABLE IF NOT EXISTS creator_teams (
+    team_id INTEGER PRIMARY KEY,
+    manager_name TEXT NOT NULL,
+    current_gameweek INTEGER NOT NULL,
+    player_1 TEXT,
+    player_2 TEXT,
+    player_3 TEXT,
+    player_4 TEXT,
+    player_5 TEXT,
+    player_6 TEXT,
+    player_7 TEXT,
+    player_8 TEXT,
+    player_9 TEXT,
+    player_10 TEXT,
+    player_11 TEXT,
+    player_12 TEXT,
+    player_13 TEXT,
+    player_14 TEXT,
+    player_15 TEXT
+);
+
+-- Create indexes for better performance
+CREATE INDEX IF NOT EXISTS idx_creator_teams_gameweek ON creator_teams(current_gameweek);
+
 -- Grant necessary permissions (adjust as needed for your setup)
 -- GRANT ALL ON all_managers TO authenticated;
 -- GRANT ALL ON all_managers TO anon;
 -- GRANT ALL ON fetch_progress TO authenticated;
 -- GRANT ALL ON fetch_progress TO anon;
+-- GRANT ALL ON creator_teams TO authenticated;
+-- GRANT ALL ON creator_teams TO anon;

@@ -11,60 +11,42 @@ import os
 import base64
 
 from database import search_managers
+from fpl_api import (
+    FPL_FIXTURES_URL,
+    FPL_HEADERS,
+    fetch_bootstrap,
+    fetch_entry_picks,
+    get_current_event_id,
+    POSITION_MAP,
+)
+from update_creator_teams import update_all_creator_teams
 
 
 st.set_page_config(page_title="FPL Cheat", page_icon="favicon.png", layout="centered")
 
-FPL_ENTRY_PICKS_URL = "https://fantasy.premierleague.com/api/entry/{manager_id}/event/{event_id}/picks/"
-FPL_BOOTSTRAP_URL = "https://fantasy.premierleague.com/api/bootstrap-static/"
-FPL_FIXTURES_URL = "https://fantasy.premierleague.com/api/fixtures/"
-FPL_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36",
-    "Referer": "https://fantasy.premierleague.com/",
-}
-
 
 @st.cache_data(ttl=60)
-def fetch_entry_picks(manager_id: int, event_id: int) -> Optional[Dict]:
-    try:
-        resp = requests.get(
-            FPL_ENTRY_PICKS_URL.format(manager_id=manager_id, event_id=event_id), timeout=10
-        )
-        resp.raise_for_status()
-        return resp.json()
-    except Exception as e:
-        st.error(f"Failed to fetch picks: {e}")
-        return None
+def fetch_entry_picks_cached(manager_id: int, event_id: int) -> Optional[Dict]:
+    """Cached wrapper for fetch_entry_picks."""
+    data = fetch_entry_picks(manager_id, event_id)
+    if not data:
+        st.error(f"Failed to fetch picks for manager {manager_id}")
+    return data
 
 
 @st.cache_data(ttl=120)
-def get_current_event_id() -> int:
-    try:
-        r = requests.get(FPL_BOOTSTRAP_URL, timeout=10)
-        r.raise_for_status()
-        data = r.json()
-        events = data.get("events") or []
-        for ev in events:
-            if ev.get("is_current"):
-                return int(ev.get("id", 1))
-        # fallback to next or first
-        for ev in events:
-            if ev.get("is_next"):
-                return int(ev.get("id", 1))
-    except Exception:
-        pass
-    return 1
+def get_current_event_id_cached() -> int:
+    """Cached wrapper for get_current_event_id."""
+    return get_current_event_id()
 
 
 @st.cache_data(ttl=600)
-def fetch_bootstrap() -> Optional[Dict]:
-    try:
-        r = requests.get(FPL_BOOTSTRAP_URL, timeout=10)
-        r.raise_for_status()
-        return r.json()
-    except Exception as e:
-        st.error(f"Failed to fetch bootstrap: {e}")
-        return None
+def fetch_bootstrap_cached() -> Optional[Dict]:
+    """Cached wrapper for fetch_bootstrap."""
+    data = fetch_bootstrap()
+    if not data:
+        st.error("Failed to fetch bootstrap data")
+    return data
 
 
 @st.cache_data(ttl=300)
@@ -88,7 +70,6 @@ def build_lookups(bootstrap: Dict) -> Tuple[Dict[int, Dict[str, str]], Dict[int,
 
     elements = bootstrap.get("elements") or []
     teams = bootstrap.get("teams") or []
-    positions = {1: "GKP", 2: "DEF", 3: "MID", 4: "FWD"}
 
     for t in teams:
         try:
@@ -100,7 +81,7 @@ def build_lookups(bootstrap: Dict) -> Tuple[Dict[int, Dict[str, str]], Dict[int,
         try:
             element_lookup[int(e["id"])]= {
                 "name": str(e.get("web_name", "")),
-                "position": positions.get(int(e.get("element_type", 0)), ""),
+                "position": POSITION_MAP.get(int(e.get("element_type", 0)), ""),
                 "team_id": int(e.get("team", 0)),
             }
         except Exception:
@@ -226,6 +207,20 @@ def _render_player_card(col, name: str, opp_label: str, team_code: str, is_capta
         col.caption(opp_label)
 
 
+def _render_player_row(picks: List[Dict], element_lookup: Dict[int, Dict[str, str]], team_lookup: Dict[int, Dict[str, str]], fixtures: List[Dict]):
+    """Helper to render a row of players."""
+    cols = st.columns(len(picks))
+    for idx, p in enumerate(picks):
+        el = int(p.get("element"))
+        meta = element_lookup.get(el, {})
+        team_id = int(meta.get("team_id", 0))
+        team_code = team_lookup.get(team_id, {}).get("code", "")
+        name = meta.get("name", "")
+        opp = get_opponent_label(team_id, fixtures, team_lookup)
+        team_short = team_lookup.get(team_id, {}).get("short_name", "")
+        _render_player_card(cols[idx], name, opp, str(team_code), bool(p.get("is_captain")), bool(p.get("is_vice_captain")), team_short)
+
+
 def render_pitch(picks: List[Dict], element_lookup: Dict[int, Dict[str, str]], team_lookup: Dict[int, Dict[str, str]], fixtures: List[Dict], show_bench: bool = True):
     starters = [p for p in picks if int(p.get("multiplier", 0)) > 0 and int(p.get("position", 0)) <= 11]
     bench = sorted([p for p in picks if int(p.get("position", 0)) >= 12], key=lambda x: int(x.get("position", 0)))
@@ -240,37 +235,56 @@ def render_pitch(picks: List[Dict], element_lookup: Dict[int, Dict[str, str]], t
     # Render each line in GKP->FWD order
     for pos in ["GKP", "DEF", "MID", "FWD"]:
         row = lines.get(pos, [])
-        if not row:
-            continue
-        cols = st.columns(len(row))
-        for idx, p in enumerate(row):
-            el = int(p.get("element"))
-            meta = element_lookup.get(el, {})
-            team_id = int(meta.get("team_id", 0))
-            team_code = team_lookup.get(team_id, {}).get("code", "")
-            name = meta.get("name", "")
-            opp = get_opponent_label(team_id, fixtures, team_lookup)
-            team_short = team_lookup.get(team_id, {}).get("short_name", "")
-            _render_player_card(cols[idx], name, opp, str(team_code), bool(p.get("is_captain")), bool(p.get("is_vice_captain")), team_short)
+        if row:
+            _render_player_row(row, element_lookup, team_lookup, fixtures)
 
     if show_bench and bench:
         st.write("")
         st.subheader("Bench")
-        cols = st.columns(len(bench))
-        for idx, p in enumerate(bench):
-            el = int(p.get("element"))
-            meta = element_lookup.get(el, {})
-            team_id = int(meta.get("team_id", 0))
-            team_code = team_lookup.get(team_id, {}).get("code", "")
-            name = meta.get("name", "")
-            opp = get_opponent_label(team_id, fixtures, team_lookup)
-            team_short = team_lookup.get(team_id, {}).get("short_name", "")
-            _render_player_card(cols[idx], name, opp, str(team_code), bool(p.get("is_captain")), bool(p.get("is_vice_captain")), team_short)
+        _render_player_row(bench, element_lookup, team_lookup, fixtures)
 
 
 def main():
     st.title("FPL Cheat")
     st.caption("Find your manager and view your current picks")
+    
+    # Creator teams update section in main area
+    st.divider()
+    st.subheader("Creator Teams")
+    st.caption("Update content creator teams for current gameweek")
+    
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col2:
+        update_button = st.button("Update Creator Teams", type="primary", use_container_width=True)
+    
+    if update_button:
+        # Quick check if already up to date
+        quick_check = update_all_creator_teams(progress_callback=None)
+        
+        if quick_check.get("already_up_to_date", False):
+            st.info("Teams are already up to date")
+        else:
+            # Update teams with progress display
+            status_container = st.status("Updating creator teams...", expanded=True)
+            progress_text = status_container.empty()
+            
+            def progress_callback(message: str):
+                progress_text.text(message)
+            
+            # Re-run update with progress display
+            results = update_all_creator_teams(progress_callback=progress_callback)
+            
+            status_container.update(
+                label=f"Update complete: {results['success']}/{results['total']} successful",
+                state="complete" if results['failed'] == 0 else "error"
+            )
+            
+            if results['success'] > 0:
+                st.success(f"✅ Successfully updated {results['success']} team(s)")
+            if results['failed'] > 0:
+                st.error(f"❌ Failed to update {results['failed']} team(s)")
+    
+    st.divider()
     # Add a pitch-like background behind the content (subtle stripes)
     st.markdown(
         """
@@ -350,19 +364,18 @@ def main():
 
     # Fetch and render picks
     if manager_id:
-        default_gw = get_current_event_id()
+        default_gw = get_current_event_id_cached()
         event_id = st.number_input("Gameweek", min_value=1, max_value=38, value=default_gw, step=1)
         with st.spinner("Fetching your team picks..."):
-            data = fetch_entry_picks(manager_id, int(event_id))
+            data = fetch_entry_picks_cached(manager_id, int(event_id))
         if not data:
             return
         picks = data.get("picks") or []
         if not picks:
             st.warning("No picks found.")
             return
-        bootstrap = fetch_bootstrap()
+        bootstrap = fetch_bootstrap_cached()
         if not bootstrap:
-            st.error("Could not load bootstrap data.")
             return
         element_lookup, team_lookup = build_lookups(bootstrap)
         fixtures = fetch_fixtures(int(event_id))
