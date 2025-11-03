@@ -1,6 +1,6 @@
 """
 Utility to fetch FPL bootstrap and export players (id, name, position) to CSV.
-Produces players.csv at project root.
+Produces data/players.csv by default.
 """
 
 from __future__ import annotations
@@ -49,7 +49,7 @@ def write_csv(rows: List[Dict[str, str]], out_path: Path) -> None:
 
 
 def main(argv: List[str]) -> int:
-    out = Path(argv[1]) if len(argv) > 1 else Path("players.csv")
+    out = Path(argv[1]) if len(argv) > 1 else Path("data/players.csv")
     data = fetch_bootstrap()
     rows = extract_players(data)
     write_csv(rows, out)

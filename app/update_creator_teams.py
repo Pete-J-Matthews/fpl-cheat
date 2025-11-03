@@ -10,9 +10,9 @@ from typing import Dict, List
 
 import streamlit as st
 
-from database import get_client, upsert_creator_team, get_current_creator_gameweek
-from fpl_api import (
-    POSITION_MAP,
+from app.database import get_client, upsert_creator_team, get_current_creator_gameweek
+from app.fpl_api import (
+    build_element_lookup,
     fetch_bootstrap,
     fetch_entry_picks,
     get_current_event_id,
@@ -71,23 +71,6 @@ TEAM_INFO: Dict[int, Dict[str, str]] = {
 
 
 
-def build_element_lookup(bootstrap: Dict) -> Dict[int, Dict[str, str]]:
-    """Build lookup dictionary for player elements.
-    Returns: element_lookup[element_id] -> {name, position}
-    """
-    element_lookup: Dict[int, Dict[str, str]] = {}
-    elements = bootstrap.get("elements") or []
-
-    for e in elements:
-        try:
-            element_lookup[int(e["id"])] = {
-                "name": str(e.get("web_name", "")),
-                "position": POSITION_MAP.get(int(e.get("element_type", 0)), ""),
-            }
-        except Exception:
-            continue
-
-    return element_lookup
 
 
 def format_player_string(

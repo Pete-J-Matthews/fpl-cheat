@@ -62,3 +62,31 @@ def fetch_entry_picks(manager_id: int, event_id: int) -> Optional[Dict]:
     except Exception:
         return None
 
+
+def build_element_lookup(bootstrap: Dict, include_team_id: bool = False) -> Dict[int, Dict[str, str]]:
+    """Build lookup dictionary for player elements.
+    
+    Args:
+        bootstrap: Bootstrap data from FPL API
+        include_team_id: If True, include team_id in the lookup
+        
+    Returns:
+        element_lookup[element_id] -> {name, position[, team_id]}
+    """
+    element_lookup: Dict[int, Dict[str, str]] = {}
+    elements = bootstrap.get("elements") or []
+
+    for e in elements:
+        try:
+            data = {
+                "name": str(e.get("web_name", "")),
+                "position": POSITION_MAP.get(int(e.get("element_type", 0)), ""),
+            }
+            if include_team_id:
+                data["team_id"] = int(e.get("team", 0))
+            element_lookup[int(e["id"])] = data
+        except Exception:
+            continue
+
+    return element_lookup
+

@@ -8,9 +8,9 @@ Runs continuously until all data is fetched, rate limited, or manually stopped.
 Progress is automatically saved at regular intervals.
 
 Usage:
-    python fetch_fpl_data.py local
-    python fetch_fpl_data.py production
-    python fetch_fpl_data.py local --test    # Test mode: only fetch first page
+    python scripts/fetch_fpl_data.py local
+    python scripts/fetch_fpl_data.py production
+    python scripts/fetch_fpl_data.py local --test    # Test mode: only fetch first page
 """
 
 import argparse
