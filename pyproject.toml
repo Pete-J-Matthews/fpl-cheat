@@ -1,0 +1,29 @@
+[project]
+name = "fpl-cheat"
+version = "0.1.0"
+description = "Fantasy Premier League team comparison app"
+requires-python = ">=3.9"
+dependencies = [
+    "streamlit>=1.28.0",
+    "requests>=2.31.0",
+    "supabase>=2.0.0",
+    "pandas>=2.0.0",
+    "numpy>=1.24.0",
+    "toml>=0.10.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "black>=23.0.0",
+    "flake8>=6.0.0",
+]
+
+
+[tool.black]
+line-length = 88
+target-version = ['py39']
+
+[tool.flake8]
+max-line-length = 88
+extend-ignore = ["E203", "W503"]
