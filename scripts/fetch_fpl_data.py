@@ -179,7 +179,7 @@ class FPLDataFetcher:
             page_managers = []
             for result in results:
                 # Extract raw values
-                manager_id = result.get('id')
+                manager_id = result.get('entry')
                 manager_name = result.get('player_name')
                 team_name = result.get('entry_name')
                 
@@ -211,7 +211,7 @@ class FPLDataFetcher:
                 
                 # If any validation failed, skip this row
                 if validation_errors:
-                    logger.warning(f"Skipping invalid record on page {page}: {', '.join(validation_errors)}. Raw data: id={manager_id}, name={manager_name}, team={team_name}")
+                    logger.warning(f"Skipping invalid record on page {page}: {', '.join(validation_errors)}. Raw data: entry={manager_id}, name={manager_name}, team={team_name}")
                     continue
                 
                 # All validations passed, create manager_data dict
@@ -646,7 +646,7 @@ def main():
                 managers = []
                 for result in results[:5]:  # Only take first 5 for testing
                     # Extract raw values
-                    manager_id = result.get('id')
+                    manager_id = result.get('entry')
                     manager_name = result.get('player_name')
                     team_name = result.get('entry_name')
                     
@@ -661,7 +661,7 @@ def main():
                         }
                         managers.append(manager_data)
                     else:
-                        logger.warning(f"Test mode: Skipping invalid record: id={manager_id}, name={manager_name}, team={team_name}")
+                        logger.warning(f"Test mode: Skipping invalid record: entry={manager_id}, name={manager_name}, team={team_name}")
                 
                 logger.info(f"Test mode: Found {len(managers)} managers in first page")
                 if managers:
