@@ -2,21 +2,18 @@
 UI components for the FPL Cheat app.
 """
 
+from typing import Dict, List, Optional
+
 import streamlit as st
 
-from app.database import search_managers
+from app.comparison import find_top_similar_teams
+from app.database import get_creator_teams, search_managers
 from app.update_creator_teams import update_all_creator_teams
 
 
 def render_creator_teams_update():
-    """Render the creator teams update section."""
-    st.divider()
-    st.subheader("Creator Teams")
-    st.caption("Update content creator teams for current gameweek")
-    
-    col1, col2, col3 = st.columns([1, 1, 1])
-    with col2:
-        update_button = st.button("Update Creator Teams", type="primary", use_container_width=True)
+    """Render the creator teams update button and handle updates."""
+    update_button = st.button("Update Creator Teams", type="secondary", use_container_width=True)
     
     if update_button:
         # Quick check if already up to date
@@ -44,24 +41,40 @@ def render_creator_teams_update():
                 st.success(f"✅ Successfully updated {results['success']} team(s)")
             if results['failed'] > 0:
                 st.error(f"❌ Failed to update {results['failed']} team(s)")
+    
+    return update_button
 
 
-def render_manager_selection() -> int | None:
-    """Render manager selection UI and return selected manager_id."""
+def process_manager_search(q: str, current_manager_id: int | None) -> int | None:
+    """Process manager search query and return manager_id."""
     if "manager_id" not in st.session_state:
         st.session_state.manager_id = None
     
-    q = st.text_input("Team or Manager name", placeholder="e.g., John or United")
-    manager_id = st.session_state.manager_id
+    manager_id = current_manager_id or st.session_state.manager_id
+    
+    # Check if input is a manager_id (integer)
+    if q and q.strip().isdigit():
+        input_manager_id = int(q.strip())
+        if st.session_state.manager_id != input_manager_id:
+            st.session_state.manager_id = input_manager_id
+            if "manager_selectbox" in st.session_state:
+                del st.session_state["manager_selectbox"]
+            return input_manager_id
 
-    # Fetch matches when there's a query
+    # Fetch matches when there's a query (only if not already using manager_id)
     matches = []
-    if q:
-        try:
-            matches = search_managers(q)
-        except Exception as e:
-            st.error(f"Database error: {e}")
-            matches = []
+    if q and q.strip():
+        # Only search if query is long enough (4+ characters)
+        if len(q.strip()) >= 4:
+            try:
+                matches = search_managers(q)
+            except Exception as e:
+                error_msg = str(e)
+                st.error(f"⚠️ {error_msg}")
+                matches = []
+        elif len(q.strip()) > 0:
+            # Show helpful message for short queries
+            st.info("💡 Enter at least 4 characters to search, or enter your manager ID (numbers only) directly")
 
     # Handle matches
     if matches:
@@ -71,99 +84,123 @@ def render_manager_selection() -> int | None:
                 manager_id = matches[0]["manager_id"]
                 st.session_state.manager_id = manager_id
         else:
-            # Show dropdown for multiple matches (always visible, collapsed when selected)
-            # Add placeholder option for "no selection"
+            # Show dropdown for multiple matches
             placeholder = "--- Select a manager ---"
             labels = [placeholder] + [
                 f"{m['manager_name']} — {m['team_name']} (id {m['manager_id']})"
                 for m in matches
             ]
             
-            # Find current selection index (0 = placeholder, 1+ = actual managers)
-            current_index = 0  # Default to placeholder (no selection)
+            # Find current selection index
+            current_index = 0
             if manager_id:
                 for idx, m in enumerate(matches):
                     if m['manager_id'] == manager_id:
-                        current_index = idx + 1  # +1 because of placeholder
+                        current_index = idx + 1
                         break
-                # If selected manager not in current matches, clear selection
                 if current_index == 0 and manager_id:
                     st.session_state.manager_id = None
                     manager_id = None
                     current_index = 0
             
-            # Use a stable key - Streamlit will automatically manage the selectbox value
             selectbox_key = "manager_selectbox"
-            
-            # Initialize selectbox value based on current manager_id
-            if selectbox_key not in st.session_state:
-                # First time: set to placeholder or selected manager
-                if manager_id and current_index > 0:
-                    st.session_state[selectbox_key] = labels[current_index]
-                else:
-                    st.session_state[selectbox_key] = placeholder
-            else:
-                # If manager_id exists but selectbox doesn't match, update selectbox
-                if manager_id and current_index > 0:
-                    expected_label = labels[current_index]
-                    if st.session_state[selectbox_key] != expected_label:
-                        st.session_state[selectbox_key] = expected_label
-                elif not manager_id and st.session_state[selectbox_key] != placeholder:
-                    # If no manager selected but selectbox isn't placeholder, reset it
-                    # But only if the current value isn't in the labels (matches changed)
-                    if st.session_state[selectbox_key] not in labels:
-                        st.session_state[selectbox_key] = placeholder
-            
-            # Get the index of the current selectbox value
-            current_value = st.session_state.get(selectbox_key, placeholder)
-            if current_value in labels:
-                display_index = labels.index(current_value)
-            else:
-                display_index = current_index
-            
             choice = st.selectbox(
-                "Select your manager:", 
+                "Select manager:", 
                 labels, 
-                index=display_index,
-                key=selectbox_key
+                index=current_index,
+                key=selectbox_key,
+                label_visibility="visible"
             )
             
-            # Process selection - Streamlit automatically reruns when selectbox changes
             if choice and choice != placeholder:
                 try:
                     selected_id = int(choice.split("id ")[-1].strip(")"))
-                    # Update manager_id if selection changed
                     if st.session_state.manager_id != selected_id:
                         st.session_state.manager_id = selected_id
+                        manager_id = selected_id
                 except (ValueError, IndexError):
-                    # If parsing fails, keep current selection
                     pass
             elif choice == placeholder:
-                # User selected placeholder, clear selection
                 if st.session_state.manager_id is not None:
                     st.session_state.manager_id = None
-    elif q:
-        st.info("No matches found. You can enter your manager_id manually below.")
-    
-    # Get manager_id from session state after potential updates
-    manager_id = st.session_state.manager_id
-
-    # Manual manager_id
-    if manager_id is None:
-        manual = st.checkbox("Enter manager_id manually")
-        if manual or q:
-            val = st.text_input("manager_id", placeholder="e.g., 123456")
-            if val.isdigit():
-                manager_id = int(val)
-                st.session_state.manager_id = manager_id
-
-    # Reset button to clear selection
-    if manager_id:
-        col1, col2 = st.columns([1, 10])
-        with col1:
-            if st.button("Clear selection"):
-                st.session_state.manager_id = None
-                st.rerun()
+                    manager_id = None
+    elif q and len(q.strip()) >= 4:
+        st.info("No matches found. Try a different search term or enter your manager ID directly (numbers only).")
     
     return st.session_state.manager_id
+
+
+def render_compare_section(
+    user_picks: List[Dict],
+    element_lookup: Dict[int, Dict[str, str]],
+    current_gameweek: int
+) -> Optional[Dict]:
+    """
+    Render compare button and comparison results.
+    
+    Args:
+        user_picks: List of pick dicts from user team
+        element_lookup: Element lookup dict
+        current_gameweek: Current gameweek number
+    
+    Returns:
+        Selected creator team dict if one is selected, None otherwise
+    """
+    # Initialize session state
+    if "comparison_results" not in st.session_state:
+        st.session_state.comparison_results = None
+    if "selected_creator_team_id" not in st.session_state:
+        st.session_state.selected_creator_team_id = None
+    
+    # Compare button - centered
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        compare_button = st.button("Compare Teams", type="primary", use_container_width=True)
+    
+    if compare_button:
+        with st.spinner("Comparing teams..."):
+            # Get creator teams for current gameweek
+            creator_teams = get_creator_teams()
+            # Filter by current gameweek
+            creator_teams = [t for t in creator_teams if t.get("current_gameweek") == current_gameweek]
+            
+            if not creator_teams:
+                st.warning("No creator teams available for current gameweek. Please update creator teams first.")
+                st.session_state.comparison_results = None
+            else:
+                # Find top similar teams
+                top_matches = find_top_similar_teams(user_picks, creator_teams, element_lookup, top_n=3)
+                st.session_state.comparison_results = top_matches
+                st.session_state.selected_creator_team_id = None  # Reset selection
+    
+    # Display comparison results
+    if st.session_state.comparison_results:
+        st.markdown("**Similar Teams:**")
+        
+        # Create compact buttons for each similar team
+        cols = st.columns(3)
+        for idx, (creator_team, similarity) in enumerate(st.session_state.comparison_results):
+            team_id = creator_team.get("team_id")
+            manager_name = creator_team.get("manager_name", f"Team {team_id}")
+            
+            with cols[idx]:
+                # Highlight selected team
+                button_type = "primary" if st.session_state.selected_creator_team_id == team_id else "secondary"
+                
+                # Use metric-style display for similarity
+                if st.button(f"{manager_name}", key=f"select_creator_{team_id}", use_container_width=True, type=button_type):
+                    st.session_state.selected_creator_team_id = team_id
+                
+                # Show similarity below button
+                st.caption(f"{similarity}% similar")
+        
+        # Get selected creator team
+        selected_team_id = st.session_state.selected_creator_team_id
+        if selected_team_id:
+            # Find the creator team in results
+            for creator_team, _ in st.session_state.comparison_results:
+                if creator_team.get("team_id") == selected_team_id:
+                    return creator_team
+    
+    return None
 

@@ -8,8 +8,6 @@ from typing import List, Dict, Optional
 
 import streamlit as st
 
-from app.fpl_api import FPL_HEADERS
-
 
 def ensure_shirt(team_code: str, team_short: Optional[str] = None) -> Optional[str]:
     """Return local jersey path from assets/jerseys; prefers {SHORT}.png then shirt_{code}.png."""
@@ -113,8 +111,81 @@ def _render_player_row(picks: List[Dict], element_lookup: Dict[int, Dict[str, st
         _render_player_card(cols[idx], name, opp, str(team_code), bool(p.get("is_captain")), bool(p.get("is_vice_captain")), team_short)
 
 
-def render_pitch(picks: List[Dict], element_lookup: Dict[int, Dict[str, str]], team_lookup: Dict[int, Dict[str, str]], fixtures: List[Dict], show_bench: bool = True):
-    """Render team picks in a pitch formation layout."""
+def creator_team_to_picks(creator_team: Dict, element_lookup: Dict[int, Dict[str, str]]) -> List[Dict]:
+    """
+    Convert creator team data (player_1 through player_15 strings) to picks format.
+    
+    Args:
+        creator_team: Dict with player_1 through player_15 keys
+        element_lookup: Element lookup dict
+    
+    Returns:
+        List of pick dicts in format compatible with render_pitch
+    """
+    picks = []
+    
+    # Create reverse lookup: name -> element_id
+    name_to_id = {}
+    for element_id, data in element_lookup.items():
+        name = data.get("name", "").strip()
+        if name:
+            name_to_id[name.lower()] = element_id
+    
+    # Parse each player string
+    for i in range(1, 16):
+        player_str = creator_team.get(f"player_{i}")
+        if not player_str:
+            continue
+        
+        # Parse format: "Name (POS)" or "Name (POS) (C)" or "Name (POS) (VC)"
+        # Extract name (everything before first "(")
+        name_part = player_str.split("(")[0].strip()
+        if not name_part:
+            continue
+        
+        # Extract position and captaincy
+        is_captain = "(C)" in player_str
+        is_vice_captain = "(VC)" in player_str
+        
+        # Find element ID
+        element_id = None
+        # Try exact match first
+        element_id = name_to_id.get(name_part.lower())
+        if not element_id:
+            # Try partial match
+            for lookup_name, lookup_id in name_to_id.items():
+                if lookup_name.startswith(name_part.lower()) or name_part.lower().startswith(lookup_name):
+                    element_id = lookup_id
+                    break
+        
+        if element_id:
+            # Create pick dict
+            pick = {
+                "element": element_id,
+                "position": i,
+                "multiplier": 1 if i <= 11 else 0,  # Starters have multiplier > 0
+                "is_captain": is_captain,
+                "is_vice_captain": is_vice_captain,
+            }
+            picks.append(pick)
+    
+    return picks
+
+
+def render_pitch(picks: List[Dict], element_lookup: Dict[int, Dict[str, str]], team_lookup: Dict[int, Dict[str, str]], fixtures: List[Dict], show_bench: bool = True, title: Optional[str] = None):
+    """Render team picks in a pitch formation layout.
+    
+    Args:
+        picks: List of pick dicts
+        element_lookup: Element lookup dict
+        team_lookup: Team lookup dict
+        fixtures: List of fixture dicts
+        show_bench: Whether to show bench players
+        title: Optional title to display above the pitch
+    """
+    if title:
+        st.markdown(f"**{title}**")
+    
     starters = [p for p in picks if int(p.get("multiplier", 0)) > 0 and int(p.get("position", 0)) <= 11]
     bench = sorted([p for p in picks if int(p.get("position", 0)) >= 12], key=lambda x: int(x.get("position", 0)))
 
@@ -132,7 +203,7 @@ def render_pitch(picks: List[Dict], element_lookup: Dict[int, Dict[str, str]], t
             _render_player_row(row, element_lookup, team_lookup, fixtures)
 
     if show_bench and bench:
-        st.write("")
-        st.subheader("Bench")
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("**Bench:**")
         _render_player_row(bench, element_lookup, team_lookup, fixtures)
 
