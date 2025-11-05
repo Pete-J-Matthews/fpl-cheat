@@ -28,23 +28,63 @@ def get_client():
 
 
 def search_managers(query: str) -> List[Dict]:
-    """Search `all_managers` by manager_name or team_name using case-sensitive prefix LIKE.
+    """Search `all_managers` by manager_name or team_name using case-insensitive prefix ILIKE.
     Enforces a minimal query length to avoid timeouts and leverage btree indexes.
     """
     client = get_client()
     q = query.strip()
-    if len(q) < 3:
+    # Increase minimum length to reduce expensive queries
+    if len(q) < 4:
         return []
-    pattern = f"{q}%"  # prefix match to leverage existing btree indexes
-    resp = (
-        client
-        .table("all_managers")
-        .select("manager_id,manager_name,team_name")
-        .or_(f"manager_name.like.{pattern},team_name.like.{pattern}")
-        .limit(50)
-        .execute()
-    )
-    return resp.data or []
+    
+    try:
+        # Use case-insensitive ILIKE for better user experience
+        # Use separate queries and combine results to avoid OR performance issues
+        pattern = f"{q}%"
+        
+        # Try manager_name first (usually more specific)
+        resp_manager = (
+            client
+            .table("all_managers")
+            .select("manager_id,manager_name,team_name")
+            .ilike("manager_name", pattern)
+            .limit(30)
+            .execute()
+        )
+        
+        # Then try team_name
+        resp_team = (
+            client
+            .table("all_managers")
+            .select("manager_id,manager_name,team_name")
+            .ilike("team_name", pattern)
+            .limit(30)
+            .execute()
+        )
+        
+        # Combine and deduplicate results
+        combined = {}
+        for item in (resp_manager.data or []):
+            combined[item["manager_id"]] = item
+        for item in (resp_team.data or []):
+            combined[item["manager_id"]] = item
+        
+        # Return up to 50 results
+        return list(combined.values())[:50]
+        
+    except Exception as e:
+        error_msg = str(e)
+        # Check if it's a timeout error
+        if "timeout" in error_msg.lower() or "57014" in error_msg:
+            raise Exception(
+                "Database query timed out. The database may be under heavy load. "
+                "Please try:\n"
+                "1. Using a longer/more specific search term (at least 4 characters)\n"
+                "2. Entering your manager ID directly (numbers only)\n"
+                "3. Trying again in a few moments"
+            )
+        # Re-raise other errors
+        raise
 
 
 def upsert_creator_team(team_data: Dict) -> bool:
