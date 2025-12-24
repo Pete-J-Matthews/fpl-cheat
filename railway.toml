@@ -6,3 +6,11 @@ startCommand = "streamlit run app.py --server.port=$PORT --server.address=0.0.0.
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
 
+# Cron service for updating creator teams daily at midnight UK time
+# Note: Railway cron uses UTC. 00:00 UTC = midnight GMT (winter) / 01:00 BST (summer)
+# To run at midnight BST in summer, use 23:00 UTC instead
+[[services]]
+name = "update-creator-teams"
+command = "python scripts/update_creator_teams_cron.py"
+schedule = "0 0 * * *"  # Daily at 00:00 UTC (midnight GMT / 1am BST)
+

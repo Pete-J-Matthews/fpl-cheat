@@ -3,7 +3,7 @@
 FPL Data Fetcher
 
 Fetches manager data from the Fantasy Premier League API and stores it in the database.
-Supports both local (SQLite) and production (Supabase) environments.
+Supports both local (SQLite) and production (PostgreSQL/Railway) environments.
 Runs continuously until all data is fetched, rate limited, or manually stopped.
 Progress is automatically saved at regular intervals.
 
@@ -22,16 +22,19 @@ import random
 
 # Database imports
 import sqlite3
+
+# Database imports
 import subprocess
 import sys
 import time
 from typing import Dict, List, Optional, Tuple
 
 try:
-    from supabase import Client as SupabaseClient
-    from supabase import create_client
+    import psycopg2
+    from psycopg2.extras import execute_values
 except ImportError:
-    SupabaseClient = None
+    psycopg2 = None
+    execute_values = None
 
 # Configure logging
 logging.basicConfig(
@@ -262,6 +265,8 @@ class DatabaseManager:
     
     def __init__(self, environment: str):
         self.environment = environment
+        self.is_postgres = environment == "production"
+        self.param = "%s" if self.is_postgres else "?"
         self.connection = self._get_connection()
         self._init_table()
     
@@ -271,272 +276,162 @@ class DatabaseManager:
             logger.info("Using local SQLite database")
             return sqlite3.connect("fpl_cheat.db")
         elif self.environment == "production":
-            logger.info("Using production Supabase database")
-            if SupabaseClient is None:
-                raise ImportError("Supabase client not available. Install with: pip install supabase")
-            
-            # Get Supabase credentials from environment or config
-            url = self._get_supabase_url()
-            key = self._get_supabase_key()
-            
-            self.client = create_client(url, key)
-            return None  # Supabase doesn't use traditional connections
+            logger.info("Using production PostgreSQL database (Railway)")
+            if psycopg2 is None:
+                raise ImportError("psycopg2 not available. Install with: pip install psycopg2-binary")
+            database_url = os.getenv('DATABASE_URL')
+            if not database_url:
+                raise ValueError("DATABASE_URL not found. Railway provides this automatically.")
+            return psycopg2.connect(database_url)
         else:
             raise ValueError("Environment must be 'local' or 'production'")
     
-    def _get_supabase_url(self) -> str:
-        """Get Supabase URL from environment variables."""
-        url = os.getenv('SUPABASE_URL')
-        if not url:
-            raise ValueError("Supabase URL not found. Set SUPABASE_URL environment variable.")
-        return url
-    
-    def _get_supabase_key(self) -> str:
-        """Get Supabase key from environment variables."""
-        key = os.getenv('SUPABASE_KEY')
-        if not key:
-            raise ValueError("Supabase key not found. Set SUPABASE_KEY environment variable.")
-        return key
-    
     def _init_table(self):
         """Initialize the all_managers table and progress tracking."""
-        if self.environment == "local":
-            cursor = self.connection.cursor()
-            
-            # Create all_managers table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS all_managers (
-                    manager_id INTEGER PRIMARY KEY,
-                    manager_name TEXT,
-                    team_name TEXT
-                )
-            """)
-            
-            # Create progress tracking table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS fetch_progress (
-                    id INTEGER PRIMARY KEY DEFAULT 1,
-                    last_page INTEGER DEFAULT 0,
-                    last_manager_count INTEGER DEFAULT 0,
-                    last_batch_start_time TEXT,
-                    last_batch_end_time TEXT,
-                    total_managers_fetched INTEGER DEFAULT 0,
-                    CONSTRAINT single_row CHECK (id = 1)
-                )
-            """)
-            
-            # Insert initial progress record if it doesn't exist
-            cursor.execute("""
-                INSERT OR IGNORE INTO fetch_progress (id, last_page, last_manager_count, total_managers_fetched)
-                VALUES (1, 0, 0, 0)
-            """)
-            
-            self.connection.commit()
-            logger.info("Initialized all_managers and fetch_progress tables in SQLite")
+        cursor = self.connection.cursor()
+        
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS all_managers (
+                manager_id INTEGER PRIMARY KEY,
+                manager_name TEXT NOT NULL,
+                team_name TEXT NOT NULL
+            )
+        """)
+        
+        if self.is_postgres:
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_all_managers_team_name ON all_managers(team_name)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_all_managers_manager_name ON all_managers(manager_name)")
+        
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS fetch_progress (
+                id INTEGER PRIMARY KEY DEFAULT 1,
+                last_page INTEGER DEFAULT 0,
+                last_manager_count INTEGER DEFAULT 0,
+                last_batch_start_time TEXT,
+                last_batch_end_time TEXT,
+                total_managers_fetched INTEGER DEFAULT 0,
+                CONSTRAINT single_row CHECK (id = 1)
+            )
+        """)
+        
+        if self.is_postgres:
+            cursor.execute("INSERT INTO fetch_progress (id, last_page, last_manager_count, total_managers_fetched) VALUES (1, 0, 0, 0) ON CONFLICT (id) DO NOTHING")
         else:
-            # For Supabase, we assume the tables already exist
-            logger.info("Using existing all_managers and fetch_progress tables in Supabase")
+            cursor.execute("INSERT OR IGNORE INTO fetch_progress (id, last_page, last_manager_count, total_managers_fetched) VALUES (1, 0, 0, 0)")
+        
+        self.connection.commit()
+        logger.info(f"Initialized tables in {'PostgreSQL' if self.is_postgres else 'SQLite'}")
     
     def upsert_managers(self, managers: List[Dict]) -> int:
         """Insert or update managers in the database."""
         if not managers:
             return 0
         
-        if self.environment == "local":
-            return self._upsert_sqlite(managers)
-        else:
-            return self._upsert_supabase(managers)
-    
-    def _upsert_sqlite(self, managers: List[Dict]) -> int:
-        """Upsert managers in SQLite database."""
         cursor = self.connection.cursor()
+        values = [(m['manager_id'], m['manager_name'], m['team_name']) for m in managers]
         
-        # Use INSERT OR REPLACE for upsert behavior
-        cursor.executemany("""
-            INSERT OR REPLACE INTO all_managers (manager_id, manager_name, team_name)
-            VALUES (?, ?, ?)
-        """, [(m['manager_id'], m['manager_name'], m['team_name']) for m in managers])
-        
-        self.connection.commit()
-        return len(managers)
-    
-    def _upsert_supabase(self, managers: List[Dict]) -> int:
-        """Upsert managers in Supabase database."""
-        try:
-            # Chunk large payloads to avoid statement timeouts
+        if self.is_postgres:
+            if execute_values is None:
+                raise ImportError("psycopg2.extras.execute_values not available")
             chunk_size = 500
             total = 0
-            for i in range(0, len(managers), chunk_size):
-                chunk = managers[i:i + chunk_size]
+            for i in range(0, len(values), chunk_size):
+                chunk = values[i:i + chunk_size]
                 try:
-                    self.client.table('all_managers').upsert(
-                        chunk,
-                        on_conflict='manager_id'
-                    ).execute()
+                    execute_values(cursor, """
+                        INSERT INTO all_managers (manager_id, manager_name, team_name) VALUES %s
+                        ON CONFLICT (manager_id) DO UPDATE SET manager_name = EXCLUDED.manager_name, team_name = EXCLUDED.team_name
+                    """, chunk, page_size=chunk_size)
+                    self.connection.commit()
                     total += len(chunk)
-                except Exception as chunk_err:
-                    logger.error(f"Failed to upsert managers chunk ({i}-{i+len(chunk)-1}) in Supabase: {chunk_err}")
-                    # Continue with next chunk rather than failing the whole batch
-                    continue
+                except Exception as e:
+                    logger.error(f"Failed to upsert chunk {i}-{i+len(chunk)-1}: {e}")
+                    self.connection.rollback()
             return total
-        except Exception as e:
-            logger.error(f"Failed to upsert managers in Supabase: {e}")
-            return 0
+        else:
+            cursor.executemany("INSERT OR REPLACE INTO all_managers (manager_id, manager_name, team_name) VALUES (?, ?, ?)", values)
+            self.connection.commit()
+            return len(managers)
     
     def get_manager_count(self) -> int:
         """Get the current number of managers in the database."""
-        if self.environment == "local":
+        try:
             cursor = self.connection.cursor()
             cursor.execute("SELECT COUNT(*) FROM all_managers")
             return cursor.fetchone()[0]
-        else:
-            try:
-                result = self.client.table('all_managers').select('manager_id', count='exact').execute()
-                return result.count
-            except Exception as e:
-                logger.error(f"Failed to get manager count from Supabase: {e}")
-                return 0
+        except Exception as e:
+            logger.error(f"Failed to get manager count: {e}")
+            return 0
     
     def get_progress(self) -> Dict:
         """Get the current progress state."""
-        if self.environment == "local":
+        try:
             cursor = self.connection.cursor()
             cursor.execute("SELECT * FROM fetch_progress WHERE id = 1")
             row = cursor.fetchone()
             if row:
-                return {
-                    'last_page': row[1],
-                    'last_manager_count': row[2],
-                    'last_batch_start_time': row[3],
-                    'last_batch_end_time': row[4],
-                    'total_managers_fetched': row[5]
-                }
+                return {'last_page': row[1], 'last_manager_count': row[2], 'last_batch_start_time': row[3],
+                        'last_batch_end_time': row[4], 'total_managers_fetched': row[5]}
             return {'last_page': 0, 'last_manager_count': 0, 'total_managers_fetched': 0}
-        else:
-            try:
-                result = self.client.table('fetch_progress').select('*').eq('id', 1).execute()
-                if result.data:
-                    return result.data[0]
-                return {'last_page': 0, 'last_manager_count': 0, 'total_managers_fetched': 0}
-            except Exception as e:
-                logger.error(f"Failed to get progress from Supabase: {e}")
-                return {'last_page': 0, 'last_manager_count': 0, 'total_managers_fetched': 0}
+        except Exception as e:
+            logger.error(f"Failed to get progress: {e}")
+            return {'last_page': 0, 'last_manager_count': 0, 'total_managers_fetched': 0}
     
     def update_progress(self, last_page: int, last_manager_count: int, 
-                       batch_start_time: str = None, batch_end_time: str = None):
+                       batch_start_time: Optional[str] = None, batch_end_time: Optional[str] = None):
         """Update the progress state."""
-        if self.environment == "local":
+        try:
             cursor = self.connection.cursor()
-            
-            # Get current total
             cursor.execute("SELECT COUNT(*) FROM all_managers")
             total_managers = cursor.fetchone()[0]
-            
-            cursor.execute("""
+            cursor.execute(f"""
                 UPDATE fetch_progress 
-                SET last_page = ?, 
-                    last_manager_count = ?, 
-                    last_batch_start_time = COALESCE(?, last_batch_start_time),
-                    last_batch_end_time = COALESCE(?, last_batch_end_time),
-                    total_managers_fetched = ?
+                SET last_page = {self.param}, last_manager_count = {self.param},
+                    last_batch_start_time = COALESCE({self.param}, last_batch_start_time),
+                    last_batch_end_time = COALESCE({self.param}, last_batch_end_time),
+                    total_managers_fetched = {self.param}
                 WHERE id = 1
             """, (last_page, last_manager_count, batch_start_time, batch_end_time, total_managers))
-            
             self.connection.commit()
-        else:
-            try:
-                # Get current total
-                result = self.client.table('all_managers').select('manager_id', count='exact').execute()
-                total_managers = result.count
-                
-                update_data = {
-                    'last_page': last_page,
-                    'last_manager_count': last_manager_count,
-                    'total_managers_fetched': total_managers
-                }
-                
-                if batch_start_time:
-                    update_data['last_batch_start_time'] = batch_start_time
-                if batch_end_time:
-                    update_data['last_batch_end_time'] = batch_end_time
-                
-                self.client.table('fetch_progress').update(update_data).eq('id', 1).execute()
-            except Exception as e:
-                logger.error(f"Failed to update progress in Supabase: {e}")
+        except Exception as e:
+            logger.error(f"Failed to update progress: {e}")
+            if self.connection:
+                self.connection.rollback()
     
     def delete_all_managers(self):
         """Delete all rows from the all_managers table."""
-        if self.environment == "local":
+        try:
             cursor = self.connection.cursor()
+            cursor.execute("SELECT COUNT(*) FROM all_managers")
+            deleted_count = cursor.fetchone()[0]
+            if deleted_count == 0:
+                logger.info("No rows to delete")
+                return 0
             cursor.execute("DELETE FROM all_managers")
             self.connection.commit()
-            deleted_count = cursor.rowcount
-            logger.info(f"Deleted {deleted_count} rows from all_managers table (SQLite)")
+            logger.info(f"Deleted {deleted_count} rows")
             return deleted_count
-        else:
-            try:
-                # Get count before deletion for logging
-                count_result = self.client.table('all_managers').select('manager_id', count='exact').execute()
-                deleted_count = count_result.count if count_result.count else 0
-                
-                if deleted_count == 0:
-                    logger.info("No rows to delete from all_managers table (Supabase)")
-                    return 0
-                
-                # Supabase requires a WHERE clause, so we'll delete in chunks
-                # Get all manager_ids first
-                result = self.client.table('all_managers').select('manager_id').execute()
-                if result.data:
-                    # Delete in chunks to avoid timeout
-                    chunk_size = 1000
-                    total_deleted = 0
-                    for i in range(0, len(result.data), chunk_size):
-                        chunk = result.data[i:i + chunk_size]
-                        manager_ids = [m['manager_id'] for m in chunk]
-                        self.client.table('all_managers').delete().in_('manager_id', manager_ids).execute()
-                        total_deleted += len(chunk)
-                        logger.debug(f"Deleted chunk {i//chunk_size + 1}: {len(chunk)} rows")
-                    
-                    logger.info(f"Deleted {total_deleted} rows from all_managers table (Supabase)")
-                    return total_deleted
-                else:
-                    logger.info("No rows found in all_managers table (Supabase)")
-                    return 0
-            except Exception as e:
-                logger.error(f"Failed to delete all managers from Supabase: {e}")
-                return 0
+        except Exception as e:
+            logger.error(f"Failed to delete managers: {e}")
+            if self.connection:
+                self.connection.rollback()
+            return 0
     
     def reset_progress(self):
         """Reset the fetch progress to initial state."""
-        if self.environment == "local":
+        try:
             cursor = self.connection.cursor()
-            cursor.execute("""
-                UPDATE fetch_progress 
-                SET last_page = 0,
-                    last_manager_count = 0,
-                    last_batch_start_time = NULL,
-                    last_batch_end_time = NULL,
-                    total_managers_fetched = 0
-                WHERE id = 1
-            """)
+            cursor.execute("UPDATE fetch_progress SET last_page = 0, last_manager_count = 0, last_batch_start_time = NULL, last_batch_end_time = NULL, total_managers_fetched = 0 WHERE id = 1")
             self.connection.commit()
-            logger.info("Reset fetch progress (SQLite)")
-        else:
-            try:
-                self.client.table('fetch_progress').update({
-                    'last_page': 0,
-                    'last_manager_count': 0,
-                    'last_batch_start_time': None,
-                    'last_batch_end_time': None,
-                    'total_managers_fetched': 0
-                }).eq('id', 1).execute()
-                logger.info("Reset fetch progress (Supabase)")
-            except Exception as e:
-                logger.error(f"Failed to reset progress in Supabase: {e}")
+            logger.info("Reset fetch progress")
+        except Exception as e:
+            logger.error(f"Failed to reset progress: {e}")
+            if self.connection:
+                self.connection.rollback()
     
     def close(self):
         """Close database connection."""
-        if self.environment == "local" and self.connection:
+        if self.connection:
             self.connection.close()
 
 
