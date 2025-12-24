@@ -3,6 +3,7 @@ Supabase-only helpers for searching FPL managers in production DB.
 Aligned with build_interface and fetch_data tickets.
 """
 
+import os
 from typing import List, Dict, Optional
 
 import streamlit as st
@@ -15,15 +16,19 @@ except ImportError:
 
 @st.cache_resource
 def get_client():
-    """Return a cached Supabase client using Streamlit secrets."""
+    """Return a cached Supabase client using environment variables."""
     if create_client is None:
         raise ImportError("Supabase client not installed. Run: pip install supabase")
-    if "supabase" not in st.secrets:
-        raise RuntimeError("Supabase secrets missing. Add supabase.url and supabase.key to secrets.")
-    url = st.secrets["supabase"].get("url")
-    key = st.secrets["supabase"].get("key")
+    
+    # Get credentials from environment variables (Railway standard)
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_KEY")
+    
     if not url or not key:
-        raise RuntimeError("Supabase url/key not configured in secrets.")
+        raise RuntimeError(
+            "Supabase credentials missing. Set SUPABASE_URL and SUPABASE_KEY environment variables."
+        )
+    
     return create_client(url, key)
 
 

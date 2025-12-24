@@ -32,23 +32,24 @@ uv run streamlit run app.py
 
 ## Production Deployment
 
-For production deployment on Streamlit Cloud:
+For production deployment on Railway:
 
 1. **Configure Supabase**:
    - Create a Supabase project
    - Run the SQL script in `supabase/schema.sql`
    - Get your project URL and anon key
 
-2. **Set up Streamlit Secrets**:
-   - In Streamlit Cloud, add these secrets:
-     ```
-     [supabase]
-     url = "your_supabase_project_url"
-     key = "your_supabase_anon_key"
-     ```
+2. **Set up Railway Environment Variables**:
+   - In Railway project dashboard, go to "Variables"
+   - Add these environment variables:
+     - `SUPABASE_URL`: Your Supabase project URL
+     - `SUPABASE_KEY`: Your Supabase anon key
+   - Railway automatically sets `PORT` (no configuration needed)
 
 3. **Deploy**:
-   - Connect your GitHub repo to Streamlit Cloud
+   - Push your code to GitHub
+   - Connect your GitHub repo to Railway
+   - Railway will automatically detect the `Procfile` and deploy
    - The app will automatically use Supabase in production
 
 ## Database Behavior

@@ -44,19 +44,13 @@ A Streamlit app that compares your Fantasy Premier League team with content crea
    ```
 
 4. **Set up production (Supabase) - Optional**
-   ```bash
-   # Create .streamlit/secrets.toml file
-   mkdir -p .streamlit
-   cat > .streamlit/secrets.toml << EOF
-   [supabase]
-   url = "your_supabase_project_url_here"
-   key = "your_supabase_anon_key_here"
-   EOF
-   ```
-   
    - Create a new Supabase project
    - Run the SQL script in `supabase/schema.sql` to create the required tables
-   - Update the secrets.toml file with your credentials
+   - For local testing, you can set environment variables:
+     ```bash
+     export SUPABASE_URL="your_supabase_project_url_here"
+     export SUPABASE_KEY="your_supabase_anon_key_here"
+     ```
 
 ## Database Setup
 
@@ -120,18 +114,36 @@ CREATE INDEX idx_creator_teams_team_name ON creator_teams(team_name);
 
 ## Deployment
 
-### Streamlit Community Cloud
+### Railway
 
-1. Push your code to GitHub
-2. Connect your GitHub repo to Streamlit Cloud
-3. Add your Supabase credentials as secrets in Streamlit Cloud
-4. Deploy!
+1. **Push your code to GitHub**
+   ```bash
+   git push origin main
+   ```
+
+2. **Create a Railway project**
+   - Go to [Railway](https://railway.app)
+   - Click "New Project"
+   - Select "Deploy from GitHub repo"
+   - Choose your repository
+
+3. **Configure environment variables**
+   - In your Railway project dashboard, go to "Variables"
+   - Add the following environment variables:
+     - `SUPABASE_URL`: Your Supabase project URL
+     - `SUPABASE_KEY`: Your Supabase anon key
+   - Railway automatically sets `PORT` (no need to configure it)
+
+4. **Deploy**
+   - Railway will automatically detect the `Procfile` and deploy your app
+   - The app will be available at a Railway-provided URL
 
 ### Environment Variables for Deployment
 
-In Streamlit Cloud, add these secrets:
+In Railway, set these environment variables:
 - `SUPABASE_URL`: Your Supabase project URL
-- `SUPABASE_ANON_KEY`: Your Supabase anon key
+- `SUPABASE_KEY`: Your Supabase anon key
+- `PORT`: Automatically set by Railway (no configuration needed)
 
 ## API Rate Limits
 

@@ -19,15 +19,17 @@ import json
 import logging
 import os
 import random
+
+# Database imports
+import sqlite3
 import subprocess
 import sys
 import time
 from typing import Dict, List, Optional, Tuple
 
-# Database imports
-import sqlite3
 try:
-    from supabase import create_client, Client as SupabaseClient
+    from supabase import Client as SupabaseClient
+    from supabase import create_client
 except ImportError:
     SupabaseClient = None
 
@@ -283,76 +285,18 @@ class DatabaseManager:
             raise ValueError("Environment must be 'local' or 'production'")
     
     def _get_supabase_url(self) -> str:
-        """Get Supabase URL from environment or config."""
-        # Try environment variable first
+        """Get Supabase URL from environment variables."""
         url = os.getenv('SUPABASE_URL')
-        if url:
-            return url
-        
-        # Try Streamlit secrets
-        try:
-            import streamlit as st
-            if "supabase" in st.secrets:
-                return st.secrets["supabase"]["url"]
-        except Exception:
-            pass
-        
-        # Try reading secrets.toml directly (simple TOML parsing without external library)
-        try:
-            secrets_path = os.path.join(os.path.dirname(__file__), '.streamlit', 'secrets.toml')
-            if os.path.exists(secrets_path):
-                with open(secrets_path, 'r') as f:
-                    content = f.read()
-                    # Simple TOML parsing for [supabase] section
-                    import re
-                    # Look for [supabase] section
-                    supabase_section = re.search(r'\[supabase\](.*?)(?=\[|\Z)', content, re.DOTALL)
-                    if supabase_section:
-                        section_content = supabase_section.group(1)
-                        # Extract url value
-                        url_match = re.search(r'url\s*=\s*["\']([^"\']+)["\']', section_content)
-                        if url_match:
-                            return url_match.group(1)
-        except Exception as e:
-            logger.debug(f"Failed to read secrets.toml: {e}")
-        
-        raise ValueError("Supabase URL not found. Set SUPABASE_URL environment variable or configure Streamlit secrets.")
+        if not url:
+            raise ValueError("Supabase URL not found. Set SUPABASE_URL environment variable.")
+        return url
     
     def _get_supabase_key(self) -> str:
-        """Get Supabase key from environment or config."""
-        # Try environment variable first
+        """Get Supabase key from environment variables."""
         key = os.getenv('SUPABASE_KEY')
-        if key:
-            return key
-        
-        # Try Streamlit secrets
-        try:
-            import streamlit as st
-            if "supabase" in st.secrets:
-                return st.secrets["supabase"]["key"]
-        except Exception:
-            pass
-        
-        # Try reading secrets.toml directly (simple TOML parsing without external library)
-        try:
-            secrets_path = os.path.join(os.path.dirname(__file__), '.streamlit', 'secrets.toml')
-            if os.path.exists(secrets_path):
-                with open(secrets_path, 'r') as f:
-                    content = f.read()
-                    # Simple TOML parsing for [supabase] section
-                    import re
-                    # Look for [supabase] section
-                    supabase_section = re.search(r'\[supabase\](.*?)(?=\[|\Z)', content, re.DOTALL)
-                    if supabase_section:
-                        section_content = supabase_section.group(1)
-                        # Extract key value
-                        key_match = re.search(r'key\s*=\s*["\']([^"\']+)["\']', section_content)
-                        if key_match:
-                            return key_match.group(1)
-        except Exception as e:
-            logger.debug(f"Failed to read secrets.toml: {e}")
-        
-        raise ValueError("Supabase key not found. Set SUPABASE_KEY environment variable or configure Streamlit secrets.")
+        if not key:
+            raise ValueError("Supabase key not found. Set SUPABASE_KEY environment variable.")
+        return key
     
     def _init_table(self):
         """Initialize the all_managers table and progress tracking."""
