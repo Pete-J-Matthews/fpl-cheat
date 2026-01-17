@@ -3,6 +3,7 @@ Minimal Streamlit app: search manager → optional manual manager_id → fetch m
 Aligned with build_interface and fetch_data tickets.
 """
 
+import base64
 import os
 
 import streamlit as st
@@ -26,6 +27,15 @@ from app.styles import get_app_styles
 favicon_path = os.path.join("assets", "favicon.svg")
 st.set_page_config(page_title="FPL Cheat", page_icon=favicon_path, layout="centered")
 
+
+def _get_favicon_base64() -> str:
+    """Convert favicon to base64 string for HTML embedding."""
+    try:
+        with open(favicon_path, "rb") as f:
+            return base64.b64encode(f.read()).decode("ascii")
+    except Exception:
+        return ""
+
 # Initialize scheduler once when the module loads
 # The scheduler module uses a singleton pattern to ensure it only starts once
 if not is_scheduler_running():
@@ -33,75 +43,72 @@ if not is_scheduler_running():
 
 
 def main():
-    st.title("FPL Cheat")
-    
     # Apply app styles
     st.markdown(get_app_styles(), unsafe_allow_html=True)
     
+    # Title with logo - centered together using flexbox (no nested columns)
+    favicon_b64 = _get_favicon_base64()
+    st.markdown(f"""
+        <div style="display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 1rem;">
+            <img src="data:image/svg+xml;base64,{favicon_b64}" width="50" style="display: inline-block; vertical-align: middle;">
+            <h1 style="margin: 0; display: inline-block; vertical-align: middle;">FPL Cheat</h1>
+        </div>
+    """, unsafe_allow_html=True)
+    
     # Section 1: Setup (compact)
-    with st.container():
-        # Manager selection, gameweek, and creator teams update - all inline
-        st.markdown("### Select Your Team")
-        
-        # Get the query value from manager selection first
-        manager_id = None
-        q = None
-        
-        # Create aligned columns - all inputs at same level
-        col1, col2, col3 = st.columns([4, 1, 1])
-        
-        with col1:
-            # Manager search input - no nested columns
-            if "manager_id" not in st.session_state:
-                st.session_state.manager_id = None
-            
-            manager_id = st.session_state.manager_id
-            q = st.text_input("Team or Manager name / Manager ID", placeholder="e.g., John, United, or enter Manager ID (numbers)", label_visibility="visible")
-        
-        with col2:
-            # Clear button aligned with input
-            st.markdown("<br>", unsafe_allow_html=True)  # Spacer to align with label
-            if manager_id:
-                if st.button("Clear", key="clear_manager", use_container_width=True):
-                    st.session_state.manager_id = None
-                    st.rerun()
+    st.markdown("### Select Your Team")
+    
+    # Get the query value from manager selection first
+    manager_id = None
+    q = None
+    
+    # Responsive search box - flex across full screen width
+    st.markdown('<div class="search-container">', unsafe_allow_html=True)
+    
+    # Manager search input
+    if "manager_id" not in st.session_state:
+        st.session_state.manager_id = None
+    
+    manager_id = st.session_state.manager_id
+    q = st.text_input("Search by Team name, Manager name, or Manager ID", placeholder="e.g. Gary Lineker or Winners 2025 or 9416474", label_visibility="visible")
+    
+    # Clear button (only show when manager_id exists)
+    if manager_id:
+        if st.button("Clear", key="clear_manager", use_container_width=False):
+            st.session_state.manager_id = None
+            st.rerun()
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Get default gameweek for data fetching (hidden from UI)
+    default_gw = get_current_event_id_cached()
+    event_id = default_gw
+    
+    # Process manager selection logic
+    manager_id = process_manager_search(q, manager_id)
+    
+    # Fetch user team data
+    user_picks = None
+    element_lookup = None
+    team_lookup = None
+    fixtures = None
+    
+    if manager_id:
+        with st.spinner("Loading team..."):
+            data = fetch_entry_picks_cached(manager_id, int(event_id))
+        if data:
+            user_picks = data.get("picks") or []
+            if not user_picks:
+                st.warning("No picks found.")
             else:
-                # Empty space to maintain alignment
-                st.write("")
-        
-        with col3:
-            # Gameweek input - label above for consistency
-            default_gw = get_current_event_id_cached()
-            st.markdown('<p style="margin-bottom: 0.25rem; font-weight: 600;">Gameweek</p>', unsafe_allow_html=True)
-            event_id = st.number_input("GW", min_value=1, max_value=38, value=default_gw, step=1, label_visibility="collapsed")
-        
-        # Process manager selection logic
-        manager_id = process_manager_search(q, manager_id)
-        
-        # Fetch user team data
-        user_picks = None
-        element_lookup = None
-        team_lookup = None
-        fixtures = None
-        
-        if manager_id:
-            with st.spinner("Loading team..."):
-                data = fetch_entry_picks_cached(manager_id, int(event_id))
-            if data:
-                user_picks = data.get("picks") or []
-                if not user_picks:
-                    st.warning("No picks found.")
-                else:
-                    bootstrap = fetch_bootstrap_cached()
-                    if bootstrap:
-                        element_lookup, team_lookup = build_lookups(bootstrap)
-                        fixtures = fetch_fixtures(int(event_id))
+                bootstrap = fetch_bootstrap_cached()
+                if bootstrap:
+                    element_lookup, team_lookup = build_lookups(bootstrap)
+                    fixtures = fetch_fixtures(int(event_id))
     
     # Section 2: Comparison (only if team selected)
     selected_creator_team = None
     if user_picks and element_lookup:
-        st.markdown("---")
-        st.markdown("### Compare Teams")
         selected_creator_team = render_compare_section(user_picks, element_lookup, int(event_id))
     
     # Section 3: Team Displays (side-by-side)

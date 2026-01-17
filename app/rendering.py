@@ -92,9 +92,10 @@ def _render_player_card(col, name: str, opp_label: str, team_code: str, is_capta
         label += " (C)"
     elif is_vice:
         label += " (V)"
-    col.markdown(f"**{label}**")
+    # Display fixture next to player name
     if opp_label:
-        col.caption(opp_label)
+        label += f" {opp_label}"
+    col.markdown(f"**{label}**")
 
 
 def _render_player_row(picks: List[Dict], element_lookup: Dict[int, Dict[str, str]], team_lookup: Dict[int, Dict[str, str]], fixtures: List[Dict]):
@@ -196,11 +197,13 @@ def render_pitch(picks: List[Dict], element_lookup: Dict[int, Dict[str, str]], t
         pos = meta.get("position", "")
         lines.setdefault(pos, []).append(p)
 
-    # Render each line in GKP->FWD order
+    # Render each line in GKP->FWD order with reduced spacing
     for pos in ["GKP", "DEF", "MID", "FWD"]:
         row = lines.get(pos, [])
         if row:
             _render_player_row(row, element_lookup, team_lookup, fixtures)
+            # Reduce spacing between rows
+            st.markdown("<div style='margin-bottom: -0.5rem;'></div>", unsafe_allow_html=True)
 
     if show_bench and bench:
         st.markdown("<br>", unsafe_allow_html=True)

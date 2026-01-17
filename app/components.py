@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 
 import streamlit as st
 
+from app.cache import get_current_event_id_cached
 from app.comparison import find_top_similar_teams
 from app.database import get_creator_teams, search_managers
 
@@ -124,13 +125,15 @@ def render_compare_section(
     
     if compare_button:
         with st.spinner("Comparing teams..."):
-            # Get creator teams for current gameweek
+            # Get the current live gameweek (creator teams are only stored for this)
+            live_gameweek = get_current_event_id_cached()
+            # Get creator teams for current live gameweek
             creator_teams = get_creator_teams()
-            # Filter by current gameweek
-            creator_teams = [t for t in creator_teams if t.get("current_gameweek") == current_gameweek]
+            # Filter by current live gameweek (not the selected gameweek)
+            creator_teams = [t for t in creator_teams if t.get("current_gameweek") == live_gameweek]
             
             if not creator_teams:
-                st.warning("No creator teams available for current gameweek. Please update creator teams first.")
+                st.warning(f"No creator teams available for gameweek {live_gameweek}. Please update creator teams first.")
                 st.session_state.comparison_results = None
             else:
                 # Find top similar teams
