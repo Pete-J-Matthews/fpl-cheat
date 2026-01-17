@@ -8,41 +8,6 @@ import streamlit as st
 
 from app.comparison import find_top_similar_teams
 from app.database import get_creator_teams, search_managers
-from app.update_creator_teams import update_all_creator_teams
-
-
-def render_creator_teams_update():
-    """Render the creator teams update button and handle updates."""
-    update_button = st.button("Update Creator Teams", type="secondary", use_container_width=True)
-    
-    if update_button:
-        # Quick check if already up to date
-        quick_check = update_all_creator_teams(progress_callback=None)
-        
-        if quick_check.get("already_up_to_date", False):
-            st.info("Teams are already up to date")
-        else:
-            # Update teams with progress display
-            status_container = st.status("Updating creator teams...", expanded=True)
-            progress_text = status_container.empty()
-            
-            def progress_callback(message: str):
-                progress_text.text(message)
-            
-            # Re-run update with progress display
-            results = update_all_creator_teams(progress_callback=progress_callback)
-            
-            status_container.update(
-                label=f"Update complete: {results['success']}/{results['total']} successful",
-                state="complete" if results['failed'] == 0 else "error"
-            )
-            
-            if results['success'] > 0:
-                st.success(f"✅ Successfully updated {results['success']} team(s)")
-            if results['failed'] > 0:
-                st.error(f"❌ Failed to update {results['failed']} team(s)")
-    
-    return update_button
 
 
 def process_manager_search(q: str, current_manager_id: int | None) -> int | None:

@@ -4,6 +4,7 @@ Aligned with build_interface and fetch_data tickets.
 """
 
 import os
+
 import streamlit as st
 
 from app.cache import (
@@ -13,13 +14,22 @@ from app.cache import (
     fetch_fixtures,
     get_current_event_id_cached,
 )
-from app.components import render_creator_teams_update, render_compare_section, process_manager_search
-from app.rendering import render_pitch, creator_team_to_picks
+from app.components import (
+    process_manager_search,
+    render_compare_section,
+)
+from app.rendering import creator_team_to_picks, render_pitch
+from app.scheduler import is_scheduler_running, start_scheduler
 from app.styles import get_app_styles
 
 # Set favicon path - works for both local and Streamlit Cloud deployment
 favicon_path = os.path.join("assets", "favicon.svg")
 st.set_page_config(page_title="FPL Cheat", page_icon=favicon_path, layout="centered")
+
+# Initialize scheduler once when the module loads
+# The scheduler module uses a singleton pattern to ensure it only starts once
+if not is_scheduler_running():
+    start_scheduler()
 
 
 def main():
@@ -38,7 +48,7 @@ def main():
         q = None
         
         # Create aligned columns - all inputs at same level
-        col1, col2, col3, col4 = st.columns([3.5, 1, 1, 1.5])
+        col1, col2, col3 = st.columns([4, 1, 1])
         
         with col1:
             # Manager search input - no nested columns
@@ -64,11 +74,6 @@ def main():
             default_gw = get_current_event_id_cached()
             st.markdown('<p style="margin-bottom: 0.25rem; font-weight: 600;">Gameweek</p>', unsafe_allow_html=True)
             event_id = st.number_input("GW", min_value=1, max_value=38, value=default_gw, step=1, label_visibility="collapsed")
-        
-        with col4:
-            # Update Creator Teams button - label above for consistency
-            st.markdown('<p style="margin-bottom: 0.25rem; font-weight: 600;">Update Teams</p>', unsafe_allow_html=True)
-            render_creator_teams_update()
         
         # Process manager selection logic
         manager_id = process_manager_search(q, manager_id)
