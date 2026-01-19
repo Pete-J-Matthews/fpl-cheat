@@ -1,9 +1,8 @@
 """
 PostgreSQL database helpers for searching FPL managers in production DB.
-Uses Railway PostgreSQL database via DATABASE_URL environment variable.
+Uses Railway PostgreSQL database via DATABASE_URL from Streamlit secrets.
 """
 
-import os
 from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Optional, TypeVar
 
@@ -21,12 +20,11 @@ T = TypeVar('T')
 
 @st.cache_resource
 def get_database_url():
-    """Return cached DATABASE_URL from environment variables."""
-    database_url = os.getenv("DATABASE_URL")
+    """Return cached DATABASE_URL from Streamlit secrets."""
+    database_url = st.secrets.get("DATABASE_URL")
     if not database_url:
         raise RuntimeError(
-            "Database credentials missing. Set DATABASE_URL environment variable. "
-            "Railway automatically provides this when you add a PostgreSQL service."
+            "Database credentials missing. Set DATABASE_URL in .streamlit/secrets.toml"
         )
     return database_url
 
