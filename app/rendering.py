@@ -62,7 +62,7 @@ def render_picks_table(picks: List[Dict], element_lookup: Dict[int, Dict[str, st
     st.table(rows)
 
 
-def _render_player_card(col, name: str, opp_label: str, team_code: str, is_captain: bool, is_vice: bool, team_short: Optional[str] = None):
+def _render_player_card(col, name: str, position: str, team_code: str, is_captain: bool, is_vice: bool, team_short: Optional[str] = None):
     """Render a single player card with jersey image."""
     path = ensure_shirt(team_code, team_short)
     if path:
@@ -87,14 +87,12 @@ def _render_player_card(col, name: str, opp_label: str, team_code: str, is_capta
             f"<div class='player-card'>shirt {team_code}</div>",
             unsafe_allow_html=True,
         )
-    label = name
+    # Display position in brackets at the start, then name
+    label = f"({position}) {name}" if position else name
     if is_captain:
         label += " (C)"
     elif is_vice:
         label += " (V)"
-    # Display fixture next to player name
-    if opp_label:
-        label += f" {opp_label}"
     col.markdown(f"**{label}**")
 
 
@@ -107,9 +105,9 @@ def _render_player_row(picks: List[Dict], element_lookup: Dict[int, Dict[str, st
         team_id = int(meta.get("team_id", 0))
         team_code = team_lookup.get(team_id, {}).get("code", "")
         name = meta.get("name", "")
-        opp = get_opponent_label(team_id, fixtures, team_lookup)
+        position = meta.get("position", "")
         team_short = team_lookup.get(team_id, {}).get("short_name", "")
-        _render_player_card(cols[idx], name, opp, str(team_code), bool(p.get("is_captain")), bool(p.get("is_vice_captain")), team_short)
+        _render_player_card(cols[idx], name, position, str(team_code), bool(p.get("is_captain")), bool(p.get("is_vice_captain")), team_short)
 
 
 def creator_team_to_picks(creator_team: Dict, element_lookup: Dict[int, Dict[str, str]]) -> List[Dict]:
@@ -206,7 +204,6 @@ def render_pitch(picks: List[Dict], element_lookup: Dict[int, Dict[str, str]], t
             st.markdown("<div style='margin-bottom: -0.5rem;'></div>", unsafe_allow_html=True)
 
     if show_bench and bench:
-        st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("**Bench:**")
         _render_player_row(bench, element_lookup, team_lookup, fixtures)
 

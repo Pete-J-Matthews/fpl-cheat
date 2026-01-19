@@ -113,7 +113,6 @@ def main():
     
     # Section 3: Team Displays (side-by-side)
     if user_picks and element_lookup and team_lookup and fixtures:
-        st.markdown("---")
         st.markdown("### Team Comparison")
         
         # Two columns for team displays with divider
