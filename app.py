@@ -49,10 +49,13 @@ def main():
     # Title with logo - centered together using flexbox (no nested columns)
     favicon_b64 = _get_favicon_base64()
     st.markdown(f"""
-        <div style="display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 1rem;">
+        <div style="display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 0.5rem;">
             <img src="data:image/svg+xml;base64,{favicon_b64}" width="50" style="display: inline-block; vertical-align: middle;">
             <h1 style="margin: 0; display: inline-block; vertical-align: middle;">FPL Cheat</h1>
         </div>
+        <p style="text-align: center; margin-top: 0; margin-bottom: 1rem; font-size: 0.9rem; font-weight: bold; color: rgba(255,255,255,0.8);">
+            Are your mates cheating by copying FPL teams to get ahead? Catch them out using this team similarity tool
+        </p>
     """, unsafe_allow_html=True)
     
     # Section 1: Setup (compact)
