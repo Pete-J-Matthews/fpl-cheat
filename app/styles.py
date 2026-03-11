@@ -1,152 +1,46 @@
 """
 CSS styling for the FPL Cheat app.
+Returns raw CSS (no <style> tag) for injection via data URI to avoid Streamlit rendering it as text.
+"""
+
+
+def get_app_css() -> str:
+    """Return raw CSS for the app. Use inject_styles() from app to inject via data URI."""
+    return """
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&display=swap');
+.stApp{background:#0f1419 !important;background-image:linear-gradient(180deg,#0f1419 0%,#131c28 50%,#0f1419 100%) !important;}
+.stApp .block-container{max-width:1100px;margin:0 auto;padding-top:2rem;padding-bottom:2rem;}
+.stApp .app-header{text-align:center;margin-bottom:2rem;}
+.stApp .app-header .logo-title{display:inline-flex;align-items:center;justify-content:center;gap:14px;margin-bottom:0.5rem;}
+.stApp .app-header .logo-title img{display:block;flex-shrink:0;}
+.stApp .app-header .logo-title h1{font-family:'Bebas Neue',sans-serif !important;font-size:2.75rem !important;letter-spacing:0.04em;margin:0;color:#f5f5f4 !important;font-weight:400;}
+.stApp .app-header .tagline{font-family:'DM Sans',system-ui,sans-serif !important;font-size:0.95rem;color:rgba(245,245,244,0.65);max-width:520px;margin:0 auto;line-height:1.5;}
+.stApp h3,.stApp .stMarkdown h3,.stApp h2,.stApp .stMarkdown h2{font-family:'Bebas Neue',sans-serif !important;font-size:1.5rem !important;letter-spacing:0.03em;color:#f5f5f4 !important;margin-top:1.5rem;margin-bottom:0.75rem;}
+.stApp h1,.stApp .stMarkdown h1{margin-top:0;margin-bottom:0;color:#f5f5f4 !important;}
+.stApp .block-container h1,.stApp .block-container h2,.stApp .block-container h3{color:#f5f5f4 !important;}
+.stApp .search-container{position:relative;width:100vw;left:50%;right:50%;margin-left:-50vw;margin-right:-50vw;padding-left:2rem;padding-right:2rem;box-sizing:border-box;}
+.stApp [data-testid="stTextInput"]>div>div,.stApp [data-testid="stSelectbox"]>div>div{background:#232f3f !important;border:1px solid rgba(255,255,255,0.12) !important;border-radius:12px !important;}
+.stApp [data-testid="stTextInput"] input,.stApp [data-testid="stSelectbox"] input{color:#f5f5f4 !important;font-family:'DM Sans',system-ui,sans-serif !important;}
+.stApp [data-testid="stTextInput"] input::placeholder{color:rgba(245,245,244,0.5) !important;}
+.stApp [data-testid="stTextInput"] label,.stApp [data-testid="stSelectbox"] label{color:rgba(245,245,244,0.9) !important;font-family:'DM Sans',system-ui,sans-serif !important;}
+.stApp [data-testid="stButton"]>button[kind="primary"],.stApp [data-testid="stButton"]>button[data-testid="baseButton-primary"]{background:#e5a00d !important;color:#0f1419 !important;font-family:'DM Sans',system-ui,sans-serif !important;font-weight:600 !important;border:none !important;border-radius:12px !important;padding:0.6rem 1.25rem !important;}
+.stApp [data-testid="stButton"]>button[kind="primary"]:hover,.stApp [data-testid="stButton"]>button[data-testid="baseButton-primary"]:hover{background:#f0b429 !important;}
+.stApp [data-testid="stButton"]>button[kind="secondary"],.stApp [data-testid="stButton"]>button:not([kind="primary"]){background:#232f3f !important;color:#f5f5f4 !important;border:1px solid rgba(255,255,255,0.12) !important;font-family:'DM Sans',system-ui,sans-serif !important;border-radius:12px !important;}
+.stApp .search-container [data-testid="column"]{max-width:none !important;}
+.stApp .element-container{margin-bottom:0.5rem;}
+.stApp .player-card{width:100%;max-width:120px;margin:0 auto 2px auto;padding:6px;border:1px solid rgba(255,255,255,0.1);border-radius:12px;background:#232f3f;text-align:center;}
+.stApp .player-card img{height:35px;width:auto;display:block;margin:0 auto;}
+.stApp .similar-teams-label{font-family:'DM Sans',system-ui,sans-serif;color:rgba(245,245,244,0.9);margin-bottom:0.5rem;}
+.stApp .team-divider{border-left:2px solid rgba(255,255,255,0.12);height:100%;min-height:400px;}
+.stApp [data-testid="stAlert"]{background:#232f3f !important;border:1px solid rgba(255,255,255,0.12) !important;border-radius:12px;}
+.stApp p,.stApp span,.stApp div[data-testid="stMarkdown"]{color:rgba(245,245,244,0.9) !important;}
+.stApp .stCaption{color:rgba(245,245,244,0.6) !important;}
 """
 
 
 def get_app_styles() -> str:
-    """Return CSS styles for the app."""
-    return """
-        <style>
-        .stApp {
-            background: repeating-linear-gradient(
-                0deg,
-                #0b3e1d 0px,
-                #0b3e1d 60px,
-                #0e5226 60px,
-                #0e5226 120px
-            );
-        }
-        /* Constrain page width for better formation consistency */
-        .block-container { max-width: 1100px; margin: 0 auto; padding-top: 3rem; padding-bottom: 1rem; }
-        
-        /* Prevent title clipping */
-        h1 { margin-top: 1rem; margin-bottom: 1.5rem; }
-        
-        /* Search container - break out of max-width constraint to use full screen width */
-        .search-container {
-            position: relative;
-            width: 100vw;
-            left: 50%;
-            right: 50%;
-            margin-left: -50vw;
-            margin-right: -50vw;
-            padding-left: 2rem;
-            padding-right: 2rem;
-            box-sizing: border-box;
-        }
-        
-        /* Make search input responsive and full width */
-        .search-container [data-testid="stTextInput"] > div > div > input {
-            width: 100% !important;
-            max-width: 100% !important;
-        }
-        
-        /* Ensure search bar column takes full available width */
-        .search-container [data-testid="column"]:has([data-testid="stTextInput"]) {
-            flex: 1 1 auto;
-            min-width: 0;
-        }
-        
-        /* Make search container columns use full width */
-        .search-container [data-testid="column"] {
-            max-width: none !important;
-        }
-        
-        /* Reduce spacing between elements */
-        .element-container { margin-bottom: 0.5rem; }
-        [data-testid="stVerticalBlock"] > [style*="flex-direction: column"] > [data-testid="stVerticalBlock"] {
-            padding-top: 0.5rem;
-            padding-bottom: 0.5rem;
-        }
-        
-        /* Player card styling: consistent size, centered, bordered */
-        .player-card {
-            width: 100%;
-            max-width: 120px;
-            margin: 0 auto 2px auto;
-            padding: 3px 3px;
-            border: 1px solid rgba(255,255,255,0.18);
-            border-radius: 12px;
-            background: rgba(0,0,0,0.08);
-            backdrop-filter: blur(2px);
-            text-align: center;
-        }
-        .player-card img {
-            height: 35px; /* half size for compactness */
-            width: auto;
-            display: block;
-            margin: 0 auto;
-        }
-        /* Center player labels under shirts */
-        .element-container p, .element-container div, .element-container span { text-align: center; }
-        
-        /* Reduce column spacing */
-        [data-testid="column"] { padding-bottom: 2px; padding-top: 0px; }
-        [data-testid="column"] div:has(img) { padding-bottom: 1px; }
-        
-        /* Compact section headers */
-        h3 { margin-top: 0.5rem; margin-bottom: 0.5rem; }
-        
-        /* Reduce spacing in pitch display */
-        [data-testid="stVerticalBlock"] [data-testid="column"] {
-            padding-left: 0.3rem;
-            padding-right: 0.3rem;
-        }
-        
-        /* Reduce spacing between player rows */
-        [data-testid="stVerticalBlock"] > [data-testid="column"] {
-            margin-bottom: -0.5rem;
-        }
-        
-        /* Align inputs and buttons vertically */
-        [data-testid="stTextInput"] > div > div,
-        [data-testid="stNumberInput"] > div > div,
-        [data-testid="stButton"] > button {
-            margin-top: 0;
-        }
-        
-        /* Ensure inputs align at top */
-        [data-testid="column"] {
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-start;
-        }
-        
-        /* Align button with input fields - match label height */
-        [data-testid="column"] [data-testid="stButton"] {
-            margin-top: 1.75rem;
-        }
-        
-        /* Consistent label positioning */
-        [data-testid="stTextInput"] label,
-        [data-testid="stNumberInput"] label {
-            margin-bottom: 0.25rem;
-        }
-        
-        /* Align captions consistently */
-        [data-testid="column"] .stCaption {
-            margin-top: 0.25rem;
-            margin-bottom: 0;
-        }
-        
-        /* Consistent label styling for manual labels */
-        [data-testid="column"] p {
-            margin-top: 0;
-            font-size: 0.875rem;
-        }
-        
-        /* Vertical divider between team columns */
-        .team-divider {
-            border-left: 2px solid rgba(255,255,255,0.4);
-            height: 100vh;
-            min-height: 500px;
-            width: 2px;
-        }
-        [data-testid="column"]:has(.team-divider) {
-            padding: 0;
-            display: flex;
-            align-items: stretch;
-        }
-        </style>
-        """
-
+    """Return HTML that injects app CSS via a data URI (avoids raw CSS being shown as text)."""
+    import base64
+    css = get_app_css().strip()
+    b64 = base64.b64encode(css.encode("utf-8")).decode("ascii")
+    return f'<link rel="stylesheet" href="data:text/css;base64,{b64}">'

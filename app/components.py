@@ -143,7 +143,7 @@ def render_compare_section(
     
     # Display comparison results
     if st.session_state.comparison_results:
-        st.markdown("**Similar Teams:**")
+        st.markdown('<p class="similar-teams-label"><strong>Similar Teams</strong></p>', unsafe_allow_html=True)
         
         # Create compact buttons for each similar team
         cols = st.columns(3)
