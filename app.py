@@ -43,19 +43,19 @@ if not is_scheduler_running():
 
 
 def main():
-    # Apply app styles
+    # Inject styles first (via data URI so Streamlit doesn't render CSS as text)
     st.markdown(get_app_styles(), unsafe_allow_html=True)
-    
-    # Title with logo - centered together using flexbox (no nested columns)
+
+    # Title with logo — professional header (logo and player shirts unchanged per requirements)
     favicon_b64 = _get_favicon_base64()
     st.markdown(f"""
-        <div style="display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 0.5rem;">
-            <img src="data:image/svg+xml;base64,{favicon_b64}" width="50" style="display: inline-block; vertical-align: middle;">
-            <h1 style="margin: 0; display: inline-block; vertical-align: middle;">FPL Cheat</h1>
+        <div class="app-header">
+            <div class="logo-title">
+                <img src="data:image/svg+xml;base64,{favicon_b64}" width="52" height="52" alt="FPL Cheat" />
+                <h1>FPL Cheat</h1>
+            </div>
+            <p class="tagline">Are your mates cheating by copying FPL teams to get ahead? Catch them out using this team similarity tool.</p>
         </div>
-        <p style="text-align: center; margin-top: 0; margin-bottom: 1rem; font-size: 0.9rem; font-weight: bold; color: rgba(255,255,255,0.8);">
-            Are your mates cheating by copying FPL teams to get ahead? Catch them out using this team similarity tool
-        </p>
     """, unsafe_allow_html=True)
     
     # Section 1: Setup (compact)
@@ -132,11 +132,7 @@ def main():
             )
         
         with col_divider:
-            # Vertical divider line
-            st.markdown(
-                '<div style="border-left: 2px solid rgba(255,255,255,0.4); height: 100%; min-height: 400px;"></div>',
-                unsafe_allow_html=True
-            )
+            st.markdown('<div class="team-divider"></div>', unsafe_allow_html=True)
         
         with col2:
             if selected_creator_team:
