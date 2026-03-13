@@ -111,7 +111,7 @@ def _render_player_row(picks: List[Dict], element_lookup: Dict[int, Dict[str, st
 
 
 def _player_card_html(name: str, position: str, team_code: str, is_captain: bool, is_vice: bool, team_short: Optional[str], small: bool) -> str:
-    """Return HTML for one player card (for use in pitch_as_html)."""
+    """Return HTML for one player card (for use in pitch_as_html). Name on first row; position and captaincy on second for equal-sized pills."""
     path = ensure_shirt(team_code, team_short)
     img_html = ""
     if path:
@@ -122,13 +122,16 @@ def _player_card_html(name: str, position: str, team_code: str, is_captain: bool
             img_html = f'<span>shirt {team_code}</span>'
     else:
         img_html = f'<span>shirt {team_code}</span>'
-    label = f"({position}) {name}" if position else name
+    meta_parts = [position] if position else []
     if is_captain:
-        label += " (C)"
+        meta_parts.append("C")
     elif is_vice:
-        label += " (V)"
+        meta_parts.append("V")
+    meta_text = " · ".join(meta_parts) if meta_parts else ""
     cls = "player-card player-card--small" if small else "player-card"
-    return f'<div class="player-cell"><div class="{cls}">{img_html}</div><p class="player-label">{label}</p></div>'
+    name_line = f'<p class="player-label">{name}</p>'
+    meta_line = f'<p class="player-meta">{meta_text}</p>' if meta_text else ""
+    return f'<div class="player-cell"><div class="{cls}">{img_html}</div>{name_line}{meta_line}</div>'
 
 
 def pitch_as_html(

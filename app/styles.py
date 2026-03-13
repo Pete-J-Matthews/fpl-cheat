@@ -57,12 +57,14 @@ section[data-testid="stHeader"],div[data-testid="stToolbar"],div[data-testid="st
 .team-box{{flex:1;min-width:0;background:var(--fpl-surface);border:1px solid var(--fpl-border);border-radius:16px;padding:1rem;}}
 .team-box-title,.team-box-bench,.team-box-placeholder{{color:var(--fpl-text);margin:0 0 0.5rem 0;font-size:0.9rem;font-family:'{FONT_BODY}',system-ui,sans-serif;}}
 .team-box-placeholder{{color:var(--fpl-text-muted);font-size:0.85rem;}}
-.pitch-row{{display:flex;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.5rem;align-items:flex-start;justify-content:center;}}
+.pitch-row{{display:flex;flex-wrap:wrap;gap:0.75rem;margin-bottom:0.5rem;align-items:flex-start;justify-content:center;}}
 .pitch-row:last-child{{margin-bottom:0;}}
-.team-box .player-cell{{display:flex;flex-direction:column;align-items:center;flex-shrink:0;}}
-.team-box .player-card--small{{max-width:72px;padding:4px;border-radius:8px;margin:0;text-align:center;background:var(--fpl-surface-elevated);border:1px solid var(--fpl-border);}}
+/* Equal-sized player pills: fixed width so name length doesn't change size */
+.team-box .player-cell{{display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:80px;min-width:80px;max-width:80px;}}
+.team-box .player-card--small{{width:72px;min-width:72px;max-width:72px;padding:4px;border-radius:8px;margin:0;text-align:center;background:var(--fpl-surface-elevated);border:1px solid var(--fpl-border);box-sizing:border-box;}}
 .team-box .player-card--small img{{height:22px;width:auto;display:block;margin:0 auto;}}
-.team-box .player-label{{margin:0 0 0.25rem 0;font-size:0.7rem;color:var(--fpl-text);font-weight:600;font-family:'{FONT_BODY}',system-ui,sans-serif;}}
+.team-box .player-label{{margin:0 0 0.15rem 0;font-size:0.7rem;color:var(--fpl-text);font-weight:600;font-family:'{FONT_BODY}',system-ui,sans-serif;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;}}
+.team-box .player-meta{{margin:0;font-size:0.6rem;color:var(--fpl-text-muted);font-family:'{FONT_BODY}',system-ui,sans-serif;width:100%;text-align:center;line-height:1.2;}}
 .stApp [data-testid="stAlert"]{{background:var(--fpl-surface-elevated) !important;border:1px solid var(--fpl-border) !important;border-radius:12px !important;}}
 .stApp p,.stApp span,.stApp div[data-testid="stMarkdown"]{{color:var(--fpl-text) !important;font-family:'{FONT_BODY}',system-ui,sans-serif !important;}}
 .stApp .stCaption{{color:var(--fpl-text-muted) !important;font-size:0.8rem;}}
