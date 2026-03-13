@@ -23,7 +23,7 @@ search bar was created to facilitate this.
 ## Usage
 
 1. Search for your team (name, manager name, or manager ID - min 4 chars for names)
-2. Click "Compare Teams" to find top 3 similar creator teams
+2. Your team is compared automatically; similar creator teams appear below
 3. Select a creator team to see side-by-side comparison with jersey images
 
 ## Troubleshooting
