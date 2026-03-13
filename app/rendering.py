@@ -110,6 +110,77 @@ def _render_player_row(picks: List[Dict], element_lookup: Dict[int, Dict[str, st
         _render_player_card(cols[idx], name, position, str(team_code), bool(p.get("is_captain")), bool(p.get("is_vice_captain")), team_short)
 
 
+def _player_card_html(name: str, position: str, team_code: str, is_captain: bool, is_vice: bool, team_short: Optional[str], small: bool) -> str:
+    """Return HTML for one player card (for use in pitch_as_html)."""
+    path = ensure_shirt(team_code, team_short)
+    img_html = ""
+    if path:
+        b64 = _b64_image(path)
+        if b64:
+            img_html = f'<img src="data:image/png;base64,{b64}" alt="{name}" />'
+        else:
+            img_html = f'<span>shirt {team_code}</span>'
+    else:
+        img_html = f'<span>shirt {team_code}</span>'
+    label = f"({position}) {name}" if position else name
+    if is_captain:
+        label += " (C)"
+    elif is_vice:
+        label += " (V)"
+    cls = "player-card player-card--small" if small else "player-card"
+    return f'<div class="player-cell"><div class="{cls}">{img_html}</div><p class="player-label">{label}</p></div>'
+
+
+def pitch_as_html(
+    picks: List[Dict],
+    element_lookup: Dict[int, Dict[str, str]],
+    team_lookup: Dict[int, Dict[str, str]],
+    title: Optional[str] = None,
+    show_bench: bool = True,
+    small: bool = True,
+) -> str:
+    """Return HTML for a team pitch (for embedding in team-box). Uses smaller cards when small=True."""
+    starters = [p for p in picks if int(p.get("multiplier", 0)) > 0 and int(p.get("position", 0)) <= 11]
+    bench = sorted([p for p in picks if int(p.get("position", 0)) >= 12], key=lambda x: int(x.get("position", 0)))
+    lines: Dict[str, List[Dict]] = {"GKP": [], "DEF": [], "MID": [], "FWD": []}
+    for p in starters:
+        el = int(p.get("element"))
+        meta = element_lookup.get(el, {})
+        pos = meta.get("position", "")
+        lines.setdefault(pos, []).append(p)
+    parts = []
+    if title:
+        parts.append(f'<p class="team-box-title"><strong>{title}</strong></p>')
+    for pos in ["GKP", "DEF", "MID", "FWD"]:
+        row = lines.get(pos, [])
+        if row:
+            row_html = []
+            for p in row:
+                el = int(p.get("element"))
+                meta = element_lookup.get(el, {})
+                team_id = int(meta.get("team_id", 0))
+                team_code = team_lookup.get(team_id, {}).get("code", "")
+                name = meta.get("name", "")
+                position = meta.get("position", "")
+                team_short = team_lookup.get(team_id, {}).get("short_name", "")
+                row_html.append(_player_card_html(name, position, str(team_code), bool(p.get("is_captain")), bool(p.get("is_vice_captain")), team_short, small))
+            parts.append(f'<div class="pitch-row">{"".join(row_html)}</div>')
+    if show_bench and bench:
+        parts.append('<p class="team-box-bench"><strong>Bench:</strong></p>')
+        bench_html = []
+        for p in bench:
+            el = int(p.get("element"))
+            meta = element_lookup.get(el, {})
+            team_id = int(meta.get("team_id", 0))
+            team_code = team_lookup.get(team_id, {}).get("code", "")
+            name = meta.get("name", "")
+            position = meta.get("position", "")
+            team_short = team_lookup.get(team_id, {}).get("short_name", "")
+            bench_html.append(_player_card_html(name, position, str(team_code), bool(p.get("is_captain")), bool(p.get("is_vice_captain")), team_short, small))
+        parts.append(f'<div class="pitch-row">{"".join(bench_html)}</div>')
+    return "".join(parts)
+
+
 def creator_team_to_picks(creator_team: Dict, element_lookup: Dict[int, Dict[str, str]]) -> List[Dict]:
     """
     Convert creator team data (player_1 through player_15 strings) to picks format.

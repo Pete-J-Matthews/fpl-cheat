@@ -96,79 +96,82 @@ def process_manager_search(q: str, current_manager_id: int | None) -> int | None
     return st.session_state.manager_id
 
 
-def render_compare_section(
-    user_picks: List[Dict],
-    element_lookup: Dict[int, Dict[str, str]],
-    current_gameweek: int
-) -> Optional[Dict]:
-    """
-    Render compare button and comparison results.
-    
-    Args:
-        user_picks: List of pick dicts from user team
-        element_lookup: Element lookup dict
-        current_gameweek: Current gameweek number
-    
-    Returns:
-        Selected creator team dict if one is selected, None otherwise
-    """
-    # Initialize session state
+def _init_comparison_state() -> None:
     if "comparison_results" not in st.session_state:
         st.session_state.comparison_results = None
     if "selected_creator_team_id" not in st.session_state:
         st.session_state.selected_creator_team_id = None
-    
-    # Compare button - centered
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        compare_button = st.button("Compare Teams", type="primary", use_container_width=True)
-    
-    if compare_button:
+    if "comparison_manager_id" not in st.session_state:
+        st.session_state.comparison_manager_id = None
+
+
+def run_compare_if_needed(
+    user_picks: List[Dict],
+    element_lookup: Dict[int, Dict[str, str]],
+    current_gameweek: int,
+    manager_id: Optional[int],
+) -> None:
+    """Run team comparison when a manager is selected. No button; runs automatically. No return."""
+    _init_comparison_state()
+    if not manager_id:
+        return
+    # Re-run comparison only when manager changed or we have no results yet
+    if st.session_state.comparison_manager_id != manager_id or st.session_state.comparison_results is None:
         with st.spinner("Comparing teams..."):
-            # Get the current live gameweek (creator teams are only stored for this)
             live_gameweek = get_current_event_id_cached()
-            # Get creator teams for current live gameweek
             creator_teams = get_creator_teams()
-            # Filter by current live gameweek (not the selected gameweek)
             creator_teams = [t for t in creator_teams if t.get("current_gameweek") == live_gameweek]
-            
             if not creator_teams:
                 st.warning(f"No creator teams available for gameweek {live_gameweek}. Please update creator teams first.")
                 st.session_state.comparison_results = None
             else:
-                # Find top similar teams
                 top_matches = find_top_similar_teams(user_picks, creator_teams, element_lookup, top_n=3)
                 st.session_state.comparison_results = top_matches
-                st.session_state.selected_creator_team_id = None  # Reset selection
-    
-    # Display comparison results
-    if st.session_state.comparison_results:
-        st.markdown('<p class="similar-teams-label"><strong>Similar Teams</strong></p>', unsafe_allow_html=True)
-        
-        # Create compact buttons for each similar team
+                st.session_state.selected_creator_team_id = None
+            st.session_state.comparison_manager_id = manager_id
+
+
+def render_similar_teams() -> Optional[Dict]:
+    """
+    Render Similar Teams section (pills) if comparison results exist.
+    Returns selected creator team dict or None.
+    """
+    _init_comparison_state()
+    if not st.session_state.comparison_results:
+        return None
+    with st.container(key="similar_teams_pills"):
+        st.markdown('<p class="section-title">Similar Teams</p>', unsafe_allow_html=True)
         cols = st.columns(3)
         for idx, (creator_team, similarity) in enumerate(st.session_state.comparison_results):
             team_id = creator_team.get("team_id")
             manager_name = creator_team.get("manager_name", f"Team {team_id}")
-            
             with cols[idx]:
-                # Highlight selected team
                 button_type = "primary" if st.session_state.selected_creator_team_id == team_id else "secondary"
-                
-                # Use metric-style display for similarity
-                if st.button(f"{manager_name}", key=f"select_creator_{team_id}", use_container_width=True, type=button_type):
+                if st.button(manager_name, key=f"select_creator_{team_id}", use_container_width=True, type=button_type):
                     st.session_state.selected_creator_team_id = team_id
-                
-                # Show similarity below button
-                st.caption(f"{similarity}% similar")
-        
-        # Get selected creator team
-        selected_team_id = st.session_state.selected_creator_team_id
-        if selected_team_id:
-            # Find the creator team in results
-            for creator_team, _ in st.session_state.comparison_results:
-                if creator_team.get("team_id") == selected_team_id:
-                    return creator_team
-    
+                    st.rerun()
+                st.markdown(
+                    f'<p class="similarity-label">{similarity}% similar</p>',
+                    unsafe_allow_html=True,
+                )
+    selected_team_id = st.session_state.selected_creator_team_id
+    if selected_team_id:
+        for creator_team, _ in st.session_state.comparison_results:
+            if creator_team.get("team_id") == selected_team_id:
+                return creator_team
     return None
+
+
+def render_compare_section(
+    user_picks: List[Dict],
+    element_lookup: Dict[int, Dict[str, str]],
+    current_gameweek: int,
+    manager_id: Optional[int] = None,
+) -> Optional[Dict]:
+    """
+    Run comparison if needed and render comparison results (convenience: both in one call).
+    Returns selected creator team dict if one is selected, None otherwise.
+    """
+    run_compare_if_needed(user_picks, element_lookup, current_gameweek, manager_id)
+    return render_similar_teams()
 

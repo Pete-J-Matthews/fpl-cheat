@@ -1,6 +1,6 @@
 """
-Minimal Streamlit app: search manager → optional manual manager_id → fetch my-team → list picks.
-Aligned with build_interface and fetch_data tickets.
+Minimal Streamlit app: search manager → fetch team → compare with creators.
+Clean structure: header, then section cards (Select Your Team, Similar Teams, Team Comparison).
 """
 
 import base64
@@ -17,36 +17,31 @@ from app.cache import (
 )
 from app.components import (
     process_manager_search,
-    render_compare_section,
+    render_similar_teams,
+    run_compare_if_needed,
 )
-from app.rendering import creator_team_to_picks, render_pitch
+from app.rendering import creator_team_to_picks, pitch_as_html, render_pitch
 from app.scheduler import is_scheduler_running, start_scheduler
 from app.styles import get_app_styles
 
-# Set favicon path - works for both local and Streamlit Cloud deployment
 favicon_path = os.path.join("assets", "favicon.svg")
 st.set_page_config(page_title="FPL Cheat", page_icon=favicon_path, layout="centered")
 
 
 def _get_favicon_base64() -> str:
-    """Convert favicon to base64 string for HTML embedding."""
     try:
         with open(favicon_path, "rb") as f:
             return base64.b64encode(f.read()).decode("ascii")
     except Exception:
         return ""
 
-# Initialize scheduler once when the module loads
-# The scheduler module uses a singleton pattern to ensure it only starts once
 if not is_scheduler_running():
     start_scheduler()
 
 
 def main():
-    # Inject styles first (via data URI so Streamlit doesn't render CSS as text)
     st.markdown(get_app_styles(), unsafe_allow_html=True)
 
-    # Title with logo — professional header (logo and player shirts unchanged per requirements)
     favicon_b64 = _get_favicon_base64()
     st.markdown(f"""
         <div class="app-header">
@@ -57,45 +52,36 @@ def main():
             <p class="tagline">Are your mates cheating by copying FPL teams to get ahead? Catch them out using this team similarity tool.</p>
         </div>
     """, unsafe_allow_html=True)
-    
-    # Section 1: Setup (compact)
+
+    event_id = get_current_event_id_cached()
+
+    # --- Section 1: Select Your Team ---
     st.markdown("### Select Your Team")
-    
-    # Get the query value from manager selection first
-    manager_id = None
-    q = None
-    
-    # Responsive search box - flex across full screen width
-    st.markdown('<div class="search-container">', unsafe_allow_html=True)
-    
-    # Manager search input
+
     if "manager_id" not in st.session_state:
         st.session_state.manager_id = None
-    
     manager_id = st.session_state.manager_id
-    q = st.text_input("Search by Team name, Manager name, or Manager ID", placeholder="e.g. Gary Lineker or Winners 2025 or 9416474", label_visibility="visible")
-    
-    # Clear button (only show when manager_id exists)
-    if manager_id:
-        if st.button("Clear", key="clear_manager", use_container_width=False):
+
+    search_col, clear_col = st.columns([5, 1], vertical_alignment="bottom")
+    with search_col:
+        q = st.text_input(
+            "Search by Team name, Manager name, or Manager ID",
+            placeholder="e.g. Gary Lineker or Winners 2025 or 9416474",
+            label_visibility="visible",
+            key="manager_search_input",
+        )
+    with clear_col:
+        if st.button("Clear", key="clear_manager", use_container_width=True, disabled=not manager_id):
             st.session_state.manager_id = None
             st.rerun()
-    
-    st.markdown('</div>', unsafe_allow_html=True)
-    
-    # Get default gameweek for data fetching (hidden from UI)
-    default_gw = get_current_event_id_cached()
-    event_id = default_gw
-    
-    # Process manager selection logic
+
     manager_id = process_manager_search(q, manager_id)
-    
-    # Fetch user team data
+
+    # Load team data when manager is selected
     user_picks = None
     element_lookup = None
     team_lookup = None
     fixtures = None
-    
     if manager_id:
         with st.spinner("Loading team..."):
             data = fetch_entry_picks_cached(manager_id, int(event_id))
@@ -108,47 +94,34 @@ def main():
                 if bootstrap:
                     element_lookup, team_lookup = build_lookups(bootstrap)
                     fixtures = fetch_fixtures(int(event_id))
-    
-    # Section 2: Comparison (only if team selected)
-    selected_creator_team = None
+
+    # Run comparison automatically when a manager is selected and team is loaded
     if user_picks and element_lookup:
-        selected_creator_team = render_compare_section(user_picks, element_lookup, int(event_id))
-    
-    # Section 3: Team Displays (side-by-side)
+        run_compare_if_needed(user_picks, element_lookup, int(event_id), manager_id)
+
+    # --- Section 2: Similar Teams (only when results exist) ---
+    selected_creator_team = None
+    if user_picks and element_lookup and st.session_state.get("comparison_results"):
+        selected_creator_team = render_similar_teams()
+
+    # --- Section 3: Team Comparison (each team in its own box, no line; smaller players) ---
     if user_picks and element_lookup and team_lookup and fixtures:
-        st.markdown("### Team Comparison")
-        
-        # Two columns for team displays with divider
-        col1, col_divider, col2 = st.columns([1, 0.05, 1])
-        
-        with col1:
-            render_pitch(
-                user_picks,
-                element_lookup,
-                team_lookup,
-                fixtures,
-                show_bench=True,
-                title="Your Team"
-            )
-        
-        with col_divider:
-            st.markdown('<div class="team-divider"></div>', unsafe_allow_html=True)
-        
-        with col2:
-            if selected_creator_team:
-                # Convert creator team to picks format
-                creator_picks = creator_team_to_picks(selected_creator_team, element_lookup)
-                manager_name = selected_creator_team.get("manager_name", "Creator Team")
-                render_pitch(
-                    creator_picks,
-                    element_lookup,
-                    team_lookup,
-                    fixtures,
-                    show_bench=True,
-                    title=manager_name
-                )
-            else:
-                st.info("👆 Select a creator team above to compare")
+        team1_html = pitch_as_html(user_picks, element_lookup, team_lookup, title="Your Team", show_bench=True, small=True)
+        if selected_creator_team:
+            creator_picks = creator_team_to_picks(selected_creator_team, element_lookup)
+            manager_name = selected_creator_team.get("manager_name", "Creator Team")
+            team2_html = pitch_as_html(creator_picks, element_lookup, team_lookup, title=manager_name, show_bench=True, small=True)
+        else:
+            team2_html = '<p class="team-box-placeholder">👆 Select a creator team above to compare</p>'
+        st.markdown(
+            f'<div class="section-card team-comparison-section">'
+            f'<h3 class="section-title">Team Comparison</h3>'
+            f'<div class="team-comparison-row">'
+            f'<div class="team-box">{team1_html}</div>'
+            f'<div class="team-box">{team2_html}</div>'
+            f'</div></div>',
+            unsafe_allow_html=True,
+        )
 
 
 if __name__ == "__main__":
