@@ -299,6 +299,8 @@ dependencies = [
     { name = "pytz" },
     { name = "requests" },
     { name = "streamlit" },
+    { name = "streamlit-searchbox", version = "0.1.23", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
+    { name = "streamlit-searchbox", version = "0.1.24", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
     { name = "toml" },
 ]
 
@@ -321,6 +323,7 @@ requires-dist = [
     { name = "pytz", specifier = ">=2023.3" },
     { name = "requests", specifier = ">=2.31.0" },
     { name = "streamlit", specifier = ">=1.28.0" },
+    { name = "streamlit-searchbox", specifier = ">=0.1.20" },
     { name = "toml", specifier = ">=0.10.2" },
 ]
 provides-extras = ["dev"]
@@ -1465,6 +1468,38 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/d6/f6/f7d3a0146577c1918439d3163707040f7111a7d2e7e2c73fa7adeb169c06/streamlit-1.50.0.tar.gz", hash = "sha256:87221d568aac585274a05ef18a378b03df332b93e08103fffcf3cd84d852af46", size = 9664808, upload-time = "2025-09-23T19:24:00.31Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/2a/38/991bbf9fa3ed3d9c8e69265fc449bdaade8131c7f0f750dbd388c3c477dc/streamlit-1.50.0-py3-none-any.whl", hash = "sha256:9403b8f94c0a89f80cf679c2fcc803d9a6951e0fba542e7611995de3f67b4bb3", size = 10068477, upload-time = "2025-09-23T19:23:57.245Z" },
+]
+
+[[package]]
+name = "streamlit-searchbox"
+version = "0.1.23"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version < '3.10'",
+]
+dependencies = [
+    { name = "streamlit", marker = "python_full_version < '3.10'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/5d/e0/58eaef3b16dc930395ddcb08fe6f00eadac474b1410ca2784ac66dcf821a/streamlit_searchbox-0.1.23.tar.gz", hash = "sha256:b72de0829d3b962f0d468d1115b73879607872c59c7a97642baba343543f1856", size = 842254, upload-time = "2025-08-10T07:09:16.767Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/cc/9e/693acc67545940c328217bd19d693c80bcd2eaa55729701658d4e508cdb1/streamlit_searchbox-0.1.23-py3-none-any.whl", hash = "sha256:fe82cee487c5cdd45d3bff6d1d80b4296ffd1899b55e57e8f22cce6acc790518", size = 845417, upload-time = "2025-08-10T07:09:15.247Z" },
+]
+
+[[package]]
+name = "streamlit-searchbox"
+version = "0.1.24"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version >= '3.12'",
+    "python_full_version == '3.11.*'",
+    "python_full_version == '3.10.*'",
+]
+dependencies = [
+    { name = "streamlit", marker = "python_full_version >= '3.10'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/46/c1/b037f76f7d6da73af6311720df3c56ed534616572da4261c0dea1e37110e/streamlit_searchbox-0.1.24.tar.gz", hash = "sha256:b6009c368812feea0dd211f03c9cc5cc85b540b0d0a57165bb2885f67d6a8a3d", size = 844522, upload-time = "2025-12-23T07:44:55.367Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4e/4d/cd7f4ca601f700b88a2ddf9b4dff9595ca15c77ab1c786b894d0668fe319/streamlit_searchbox-0.1.24-py3-none-any.whl", hash = "sha256:52ebae43acf8a5c7b6a0e681efc58170c880da308c846dd2db907da84633e468", size = 847934, upload-time = "2025-12-23T07:44:53.885Z" },
 ]
 
 [[package]]

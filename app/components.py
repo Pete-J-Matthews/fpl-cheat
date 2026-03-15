@@ -11,89 +11,93 @@ from app.comparison import find_top_similar_teams
 from app.database import get_creator_teams, search_managers
 
 
-def process_manager_search(q: str, current_manager_id: int | None) -> int | None:
-    """Process manager search query and return manager_id."""
+def manager_searchbox_options(searchterm: str) -> list[tuple[str, int]]:
+    """
+    Search function for streamlit-searchbox. Returns options as (display_text, manager_id)
+    so the selected value is the manager_id. Call with 3+ chars for name/team search,
+    or digits only for manager ID lookup.
+    """
+    term = (searchterm or "").strip()
+    if not term:
+        return []
+    # Manager ID (digits only): single option that returns the id
+    if term.isdigit():
+        return [(f"Manager ID {term}", int(term))]
+    # Name/team search: require 3+ characters before showing dropdown options
+    if len(term) < 3:
+        return []
+    try:
+        matches = search_managers(term)
+        return [
+            (f"{m['manager_name']} — {m['team_name']} (id {m['manager_id']})", m["manager_id"])
+            for m in matches
+        ]
+    except Exception:
+        return []
+
+
+def process_manager_search(q: str, current_manager_id: int | None) -> tuple[int | None, list[dict]]:
+    """
+    Process manager search query. Returns (manager_id, matches).
+    - Numeric ID: sets manager_id and returns (manager_id, []).
+    - Text search with matches: returns (current_manager_id, matches); caller must show
+      dropdown and set manager_id from selection (no auto-select for single match).
+    - No matches / short query: returns (manager_id, []) and may show info/error messages.
+    """
     if "manager_id" not in st.session_state:
         st.session_state.manager_id = None
-    
+
     manager_id = current_manager_id or st.session_state.manager_id
-    
-    # Check if input is a manager_id (integer)
+
+    # Direct manager ID (numbers only): set and return, no dropdown
     if q and q.strip().isdigit():
         input_manager_id = int(q.strip())
         if st.session_state.manager_id != input_manager_id:
             st.session_state.manager_id = input_manager_id
             if "manager_selectbox" in st.session_state:
                 del st.session_state["manager_selectbox"]
-            return input_manager_id
+        return st.session_state.manager_id, []
 
-    # Fetch matches when there's a query (only if not already using manager_id)
-    matches = []
+    # Text search: require 3+ chars
+    matches: list[dict] = []
     if q and q.strip():
-        # Only search if query is long enough (4+ characters)
-        if len(q.strip()) >= 4:
+        if len(q.strip()) >= 2:
             try:
                 matches = search_managers(q)
             except Exception as e:
-                error_msg = str(e)
-                st.error(f"⚠️ {error_msg}")
+                st.error(f"⚠️ {str(e)}")
                 matches = []
-        elif len(q.strip()) > 0:
-            # Show helpful message for short queries
-            st.info("💡 Enter at least 4 characters to search, or enter your manager ID (numbers only) directly")
-
-    # Handle matches
-    if matches:
-        if len(matches) == 1:
-            # Auto-select if only one match
-            if manager_id != matches[0]["manager_id"]:
-                manager_id = matches[0]["manager_id"]
-                st.session_state.manager_id = manager_id
         else:
-            # Show dropdown for multiple matches
-            placeholder = "--- Select a manager ---"
-            labels = [placeholder] + [
-                f"{m['manager_name']} — {m['team_name']} (id {m['manager_id']})"
-                for m in matches
-            ]
-            
-            # Find current selection index
-            current_index = 0
-            if manager_id:
-                for idx, m in enumerate(matches):
-                    if m['manager_id'] == manager_id:
-                        current_index = idx + 1
-                        break
-                if current_index == 0 and manager_id:
-                    st.session_state.manager_id = None
-                    manager_id = None
-                    current_index = 0
-            
-            selectbox_key = "manager_selectbox"
-            choice = st.selectbox(
-                "Select manager:", 
-                labels, 
-                index=current_index,
-                key=selectbox_key,
-                label_visibility="visible"
-            )
-            
-            if choice and choice != placeholder:
-                try:
-                    selected_id = int(choice.split("id ")[-1].strip(")"))
-                    if st.session_state.manager_id != selected_id:
-                        st.session_state.manager_id = selected_id
-                        manager_id = selected_id
-                except (ValueError, IndexError):
-                    pass
-            elif choice == placeholder:
-                if st.session_state.manager_id is not None:
-                    st.session_state.manager_id = None
-                    manager_id = None
-    elif q and len(q.strip()) >= 4:
+            st.info("💡 Enter at least 3 characters to search, or enter your manager ID (numbers only) directly")
+
+    # When we have matches (1 or more), never auto-select; caller shows dropdown
+    if matches:
+        return manager_id, matches
+
+    if q and len(q.strip()) >= 2:
         st.info("No matches found. Try a different search term or enter your manager ID directly (numbers only).")
-    
-    return st.session_state.manager_id
+
+    return manager_id, []
+
+
+def get_manager_dropdown_options(matches: list[dict]) -> list[str]:
+    """Return placeholder + option labels for the manager selectbox."""
+    placeholder = "--- Select a manager ---"
+    labels = [
+        f"{m['manager_name']} — {m['team_name']} (id {m['manager_id']})"
+        for m in matches
+    ]
+    return [placeholder] + labels
+
+
+def get_manager_id_from_choice(choice: str, placeholder: str = "--- Select a manager ---") -> int | None:
+    """Parse manager_id from selectbox choice string. Returns None if placeholder or parse fails."""
+    if not choice or choice == placeholder:
+        return None
+    try:
+        return int(choice.split("id ")[-1].strip(")"))
+    except (ValueError, IndexError):
+        return None
 
 
 def _init_comparison_state() -> None:
@@ -127,8 +131,15 @@ def run_compare_if_needed(
             else:
                 top_matches = find_top_similar_teams(user_picks, creator_teams, element_lookup, top_n=3)
                 st.session_state.comparison_results = top_matches
-                st.session_state.selected_creator_team_id = None
+                # Default to first (most similar) team so the first pill is selected immediately
+                first_team = top_matches[0][0] if top_matches else None
+                st.session_state.selected_creator_team_id = first_team.get("team_id") if first_team else None
             st.session_state.comparison_manager_id = manager_id
+
+
+def _select_creator_team(team_id: int) -> None:
+    """on_click callback: runs before the rest of the script, so pill highlight updates on first click."""
+    st.session_state.selected_creator_team_id = team_id
 
 
 def render_similar_teams() -> Optional[Dict]:
@@ -139,17 +150,26 @@ def render_similar_teams() -> Optional[Dict]:
     _init_comparison_state()
     if not st.session_state.comparison_results:
         return None
+    # If nothing selected yet, default to first (most similar) team so first pill is selected
+    if st.session_state.selected_creator_team_id is None:
+        first_team = st.session_state.comparison_results[0][0]
+        st.session_state.selected_creator_team_id = first_team.get("team_id")
     with st.container(key="similar_teams_pills"):
-        st.markdown('<p class="section-title">Similar Teams</p>', unsafe_allow_html=True)
+        st.markdown("### Similar Teams")
         cols = st.columns(3)
         for idx, (creator_team, similarity) in enumerate(st.session_state.comparison_results):
             team_id = creator_team.get("team_id")
             manager_name = creator_team.get("manager_name", f"Team {team_id}")
             with cols[idx]:
                 button_type = "primary" if st.session_state.selected_creator_team_id == team_id else "secondary"
-                if st.button(manager_name, key=f"select_creator_{team_id}", use_container_width=True, type=button_type):
-                    st.session_state.selected_creator_team_id = team_id
-                    st.rerun()
+                st.button(
+                    manager_name,
+                    key=f"select_creator_{team_id}",
+                    use_container_width=True,
+                    type=button_type,
+                    on_click=_select_creator_team,
+                    args=(team_id,),
+                )
                 st.markdown(
                     f'<p class="similarity-label">{similarity}% similar</p>',
                     unsafe_allow_html=True,
