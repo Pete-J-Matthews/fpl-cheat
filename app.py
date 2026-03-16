@@ -27,7 +27,7 @@ from app.scheduler import is_scheduler_running, start_scheduler
 from app.styles import get_app_styles
 
 favicon_path = os.path.join("assets", "favicon.svg")
-st.set_page_config(page_title="FPL Cheat", page_icon=favicon_path, layout="centered")
+st.set_page_config(page_title="FPL Cheat", page_icon=favicon_path, layout="wide")
 
 
 def _get_favicon_base64() -> str:
@@ -51,7 +51,8 @@ def main():
                 <img src="data:image/svg+xml;base64,{favicon_b64}" width="52" height="52" alt="FPL Cheat" />
                 <h1>FPL Cheat</h1>
             </div>
-            <p class="tagline">Are your mates cheating by copying FPL teams to get ahead? Catch them out using this team similarity tool.</p>
+            <p class="tagline">Are your mates cheating by copying FPL teams to get ahead? 
+            <br> Catch them out using this team similarity tool.</p>
         </div>
     """, unsafe_allow_html=True)
 

@@ -28,7 +28,7 @@ header{{display:none !important;}}
 section[data-testid="stHeader"],div[data-testid="stToolbar"],div[data-testid="stDecoration"]{{display:none !important;}}
 #MainMenu,footer{{visibility:hidden !important;}}
 .stApp{{background:var(--fpl-bg) !important;background-image:linear-gradient(180deg,var(--fpl-bg) 0%,var(--fpl-bg-end) 50%,var(--fpl-bg) 100%) !important;}}
-.stApp .block-container{{max-width:900px;margin:0 auto;padding:1.5rem 1.25rem;box-sizing:border-box;}}
+.stApp .block-container{{width:100%;max-width:none;margin:0;padding:1.5rem 7vw;box-sizing:border-box;}}
 .stApp .app-header{{text-align:center;margin-bottom:1.5rem;}}
 .stApp .app-header .logo-title{{display:inline-flex;align-items:center;justify-content:center;gap:14px;margin-bottom:0.5rem;}}
 .stApp .app-header .logo-title img{{display:block;flex-shrink:0;}}
