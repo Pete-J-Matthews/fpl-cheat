@@ -160,12 +160,39 @@ def main():
             @st.fragment
             def similar_teams_and_comparison():
                 selected_creator_team = render_similar_teams()
-                team1_html = pitch_as_html(user_picks, element_lookup, team_lookup, title="Your Team", show_bench=True, small=True)
                 if selected_creator_team:
                     creator_picks = creator_team_to_picks(selected_creator_team, element_lookup)
                     manager_name = selected_creator_team.get("manager_name", "Creator Team")
-                    team2_html = pitch_as_html(creator_picks, element_lookup, team_lookup, title=manager_name, show_bench=True, small=True)
+                    user_player_ids = {int(p.get("element")) for p in user_picks if p.get("element") is not None}
+                    creator_player_ids = {int(p.get("element")) for p in creator_picks if p.get("element") is not None}
+                    common_player_ids = user_player_ids & creator_player_ids
+                    team1_html = pitch_as_html(
+                        user_picks,
+                        element_lookup,
+                        team_lookup,
+                        title="Your Team",
+                        show_bench=True,
+                        small=True,
+                        common_player_ids=common_player_ids,
+                    )
+                    team2_html = pitch_as_html(
+                        creator_picks,
+                        element_lookup,
+                        team_lookup,
+                        title=manager_name,
+                        show_bench=True,
+                        small=True,
+                        common_player_ids=common_player_ids,
+                    )
                 else:
+                    team1_html = pitch_as_html(
+                        user_picks,
+                        element_lookup,
+                        team_lookup,
+                        title="Your Team",
+                        show_bench=True,
+                        small=True,
+                    )
                     team2_html = '<p class="team-box-placeholder">👆 Select a creator team above to compare</p>'
                 st.markdown(
                     f'<div class="section-card team-comparison-section">'

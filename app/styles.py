@@ -21,6 +21,9 @@ def get_app_css() -> str:
   --fpl-text-dim: rgba(245,244,240,0.5);
   --fpl-accent: #6b3a9e;
   --fpl-accent-hover: #7c4dab;
+  --fpl-common-bg: rgba(77, 212, 124, 0.22);
+  --fpl-common-border: rgba(120, 235, 160, 0.55);
+  --fpl-common-glow: rgba(120, 235, 160, 0.25);
   --fpl-border: rgba(255,255,255,0.1);
   --fpl-border-subtle: rgba(255,255,255,0.06);
 }}
@@ -83,6 +86,8 @@ section[data-testid="stHeader"],div[data-testid="stToolbar"],div[data-testid="st
 .team-box .player-card--small img{{height:22px;width:auto;display:block;margin:0 auto;}}
 .team-box .player-label{{margin:0 0 0.15rem 0;font-size:0.7rem;color:var(--fpl-text);font-weight:600;font-family:'{FONT_BODY}',system-ui,sans-serif;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;}}
 .team-box .player-meta{{margin:0;font-size:0.6rem;color:var(--fpl-text-muted);font-family:'{FONT_BODY}',system-ui,sans-serif;width:100%;text-align:center;line-height:1.2;}}
+.team-box .player-card--small.player-card--common{{background:var(--fpl-common-bg) !important;border-color:var(--fpl-common-border) !important;box-shadow:0 0 0 1px var(--fpl-common-glow) !important;}}
+.team-box .player-card.player-card--common{{background:var(--fpl-common-bg) !important;border-color:var(--fpl-common-border) !important;box-shadow:0 0 0 1px var(--fpl-common-glow) !important;}}
 .stApp [data-testid="stAlert"]{{background:var(--fpl-surface-elevated) !important;border:1px solid var(--fpl-border) !important;border-radius:12px !important;}}
 .stApp p,.stApp span,.stApp div[data-testid="stMarkdown"]{{color:var(--fpl-text) !important;font-family:'{FONT_BODY}',system-ui,sans-serif !important;}}
 .stApp .stCaption{{color:var(--fpl-text-muted) !important;font-size:0.8rem;}}

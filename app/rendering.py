@@ -4,7 +4,7 @@ Rendering functions for displaying FPL team picks and player cards.
 
 import os
 import base64
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Set
 
 import streamlit as st
 
@@ -110,7 +110,17 @@ def _render_player_row(picks: List[Dict], element_lookup: Dict[int, Dict[str, st
         _render_player_card(cols[idx], name, position, str(team_code), bool(p.get("is_captain")), bool(p.get("is_vice_captain")), team_short)
 
 
-def _player_card_html(name: str, position: str, team_code: str, is_captain: bool, is_vice: bool, team_short: Optional[str], small: bool) -> str:
+def _player_card_html(
+    name: str,
+    position: str,
+    team_code: str,
+    is_captain: bool,
+    is_vice: bool,
+    team_short: Optional[str],
+    small: bool,
+    element_id: int,
+    common_player_ids: Optional[Set[int]],
+) -> str:
     """Return HTML for one player card (for use in pitch_as_html). Name on first row; position and captaincy on second for equal-sized pills."""
     path = ensure_shirt(team_code, team_short)
     img_html = ""
@@ -129,6 +139,8 @@ def _player_card_html(name: str, position: str, team_code: str, is_captain: bool
         meta_parts.append("V")
     meta_text = " · ".join(meta_parts) if meta_parts else ""
     cls = "player-card player-card--small" if small else "player-card"
+    if common_player_ids and element_id in common_player_ids:
+        cls += " player-card--common"
     name_line = f'<p class="player-label">{name}</p>'
     meta_line = f'<p class="player-meta">{meta_text}</p>' if meta_text else ""
     return f'<div class="player-cell"><div class="{cls}">{img_html}</div>{name_line}{meta_line}</div>'
@@ -141,6 +153,7 @@ def pitch_as_html(
     title: Optional[str] = None,
     show_bench: bool = True,
     small: bool = True,
+    common_player_ids: Optional[Set[int]] = None,
 ) -> str:
     """Return HTML for a team pitch (for embedding in team-box). Uses smaller cards when small=True."""
     starters = [p for p in picks if int(p.get("multiplier", 0)) > 0 and int(p.get("position", 0)) <= 11]
@@ -166,7 +179,19 @@ def pitch_as_html(
                 name = meta.get("name", "")
                 position = meta.get("position", "")
                 team_short = team_lookup.get(team_id, {}).get("short_name", "")
-                row_html.append(_player_card_html(name, position, str(team_code), bool(p.get("is_captain")), bool(p.get("is_vice_captain")), team_short, small))
+                row_html.append(
+                    _player_card_html(
+                        name,
+                        position,
+                        str(team_code),
+                        bool(p.get("is_captain")),
+                        bool(p.get("is_vice_captain")),
+                        team_short,
+                        small,
+                        element_id=el,
+                        common_player_ids=common_player_ids,
+                    )
+                )
             parts.append(f'<div class="pitch-row">{"".join(row_html)}</div>')
     if show_bench and bench:
         parts.append('<p class="team-box-bench"><strong>Bench:</strong></p>')
@@ -179,7 +204,19 @@ def pitch_as_html(
             name = meta.get("name", "")
             position = meta.get("position", "")
             team_short = team_lookup.get(team_id, {}).get("short_name", "")
-            bench_html.append(_player_card_html(name, position, str(team_code), bool(p.get("is_captain")), bool(p.get("is_vice_captain")), team_short, small))
+            bench_html.append(
+                _player_card_html(
+                    name,
+                    position,
+                    str(team_code),
+                    bool(p.get("is_captain")),
+                    bool(p.get("is_vice_captain")),
+                    team_short,
+                    small,
+                    element_id=el,
+                    common_player_ids=common_player_ids,
+                )
+            )
         parts.append(f'<div class="pitch-row">{"".join(bench_html)}</div>')
     return "".join(parts)
 
