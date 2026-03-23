@@ -15,7 +15,11 @@ from app.fpl_api import (
     get_current_event_id,
 )
 
-CREATOR_TEAM_IDS = [44, 200, 1320, 1587, 14501, 16267, 6586, 441, 1924811, 1514450, 260, 341, 135, 7577129, 16725, 3570, 17614, 963, 251, 698910, 2253812]
+CREATOR_TEAM_IDS = [
+    44, 200, 1320, 1587, 14501, 16267, 6586, 441, 1924811, 1514450,
+    260, 341, 135, 7577129, 16725, 3570, 17614, 963, 251, 698910, 2253812,
+    2869, 2140, 2974, 1536, 68585, 156, 11539, 24194, 9505, 20360,
+]
 
 TEAM_INFO = {
     44: 'Lets Talk FPL', 200: 'FPL Focal', 1320: 'FPL Harry', 1587: 'FPL Raptor',
@@ -24,6 +28,9 @@ TEAM_INFO = {
     341: 'Lee Bonfield', 135: 'Holly Shand', 7577129: 'Ian Irwing', 16725: 'FPL Sonaldo',
     3570: 'Pras', 17614: 'Gianni Buttice', 963: 'BigMan Bakar', 251: 'Yelena',
     698910: 'Stormzy', 2253812: 'Chunkz',
+    2869: 'Fabio Borges', 2140: 'FPL Family', 2974: 'FPL Goat', 1536: 'FPL Hints',
+    68585: 'FPL Matthew', 156: 'FPL Salah', 11539: 'Jian Batra', 24194: 'Lateriser',
+    9505: 'Zophar', 20360: 'Andy Martin FPL',
 }
 
 
