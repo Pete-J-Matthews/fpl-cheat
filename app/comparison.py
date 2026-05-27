@@ -78,13 +78,14 @@ def calculate_team_similarity(user_player_ids: Set[int], creator_player_ids: Set
     
     # Count common players
     common_players = len(user_player_ids & creator_player_ids)
-    
-    # Calculate percentage: common players / total unique players in both teams
-    total_unique = len(user_player_ids | creator_player_ids)
-    if total_unique == 0:
+
+    # Calculate percentage: common players / size of the larger team
+    # Using max avoids inflating the score when one team has fewer players parsed
+    max_team_size = max(len(user_player_ids), len(creator_player_ids))
+    if max_team_size == 0:
         return 0.0
-    
-    similarity = (common_players / total_unique) * 100.0
+
+    similarity = (common_players / max_team_size) * 100.0
     
     return round(similarity, 1)
 

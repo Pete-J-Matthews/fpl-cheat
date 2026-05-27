@@ -42,8 +42,8 @@ def test_parse_creator_team_players_partial_match_via_prefix():
 def test_calculate_team_similarity_common_players():
     user_ids = {1, 2, 3}
     creator_ids = {2, 3, 4}
-    # common=2, union=4 => 50.0
-    assert comparison.calculate_team_similarity(user_ids, creator_ids) == 50.0
+    # common=2, max_team_size=3 => 66.7
+    assert comparison.calculate_team_similarity(user_ids, creator_ids) == 66.7
 
 
 def test_calculate_team_similarity_handles_empty_sets():
@@ -79,6 +79,6 @@ def test_find_top_similar_teams_sorts_and_limits():
     assert top[0][1] == 100.0
 
     assert top[1][0]["manager_name"] == "team3"
-    # team3: {2,3} vs {1,2,3} => common=2, union=3 => 66.7 rounded to 1 decimal
+    # team3: {2,3} vs {1,2,3} => common=2, max_team_size=3 => 66.7
     assert top[1][1] == 66.7
 
