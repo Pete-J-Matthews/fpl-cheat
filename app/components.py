@@ -6,9 +6,9 @@ from typing import Dict, List, Optional
 
 import streamlit as st
 
-from app.cache import get_current_event_id_cached
+from app.cache import get_creator_teams_cached, get_current_event_id_cached
 from app.comparison import find_top_similar_teams
-from app.database import get_creator_teams, search_managers
+from app.database import search_managers
 
 
 def manager_searchbox_options(searchterm: str) -> list[tuple[str, int]]:
@@ -123,7 +123,7 @@ def run_compare_if_needed(
     if st.session_state.comparison_manager_id != manager_id or st.session_state.comparison_results is None:
         with st.spinner("Comparing teams..."):
             live_gameweek = get_current_event_id_cached()
-            creator_teams = get_creator_teams()
+            creator_teams = get_creator_teams_cached()
             creator_teams = [t for t in creator_teams if t.get("current_gameweek") == live_gameweek]
             if not creator_teams:
                 st.warning(f"No creator teams available for gameweek {live_gameweek}. Please update creator teams first.")

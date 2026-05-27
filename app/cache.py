@@ -7,6 +7,7 @@ from typing import Dict, List, Optional
 import requests
 import streamlit as st
 
+from app.database import get_creator_teams
 from app.fpl_api import (
     FPL_FIXTURES_URL,
     FPL_HEADERS,
@@ -50,6 +51,12 @@ def fetch_fixtures(event_id: int) -> List[Dict]:
     except Exception as e:
         st.warning(f"Failed to fetch fixtures for GW {event_id}: {e}")
         return []
+
+
+@st.cache_data(ttl=300)
+def get_creator_teams_cached() -> list:
+    """Cached wrapper for get_creator_teams."""
+    return get_creator_teams()
 
 
 def build_lookups(bootstrap: Dict) -> tuple[Dict[int, Dict[str, str]], Dict[int, Dict[str, str]]]:
