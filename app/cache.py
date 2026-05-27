@@ -32,7 +32,7 @@ def get_current_event_id_cached() -> int:
     return get_current_event_id()
 
 
-@st.cache_data(ttl=600)
+@st.cache_resource(ttl=600)
 def fetch_bootstrap_cached() -> Optional[Dict]:
     """Cached wrapper for fetch_bootstrap."""
     data = fetch_bootstrap()
