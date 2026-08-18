@@ -2,20 +2,21 @@
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS builder
 
 # UV optimisation parameters
-ENV UV_COMPILE_BYTECODE=1 \ 
+ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=never \
     UV_PROJECT_ENVIRONMENT=/opt/venv
 
 WORKDIR /app
 
-# Mount the cache pyproject.toml and uv.lock files.
-# Railway's builder rejects a cache mount without an explicit id (local Docker
-# defaults it to the target path); keep the id or the remote build fails.
-RUN --mount=type=cache,id=uv-cache,target=/root/.cache/uv \
-    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    --mount=type=bind,source=uv.lock,target=uv.lock \
-    uv sync --locked --no-dev
+# Copy only the lockfile inputs first, so editing application code doesn't
+# invalidate this layer. Railway's builder supports no mount type other than
+# type=cache, so BuildKit bind/cache mounts can't be used here at all. These
+# files stay in the builder stage, which is discarded -- only /opt/venv is
+# carried into the runtime image.
+COPY pyproject.toml uv.lock ./
+
+RUN uv sync --locked --no-dev
 
 
 # --- RUNTIME STAGE ---
