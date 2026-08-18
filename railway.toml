@@ -1,7 +1,16 @@
+[build]
+builder = "DOCKERFILE"
+# Relative to the repo root, which stays the build context.
+dockerfilePath = "deploy/Dockerfile"
+
 [deploy]
-startCommand = "python start.py"
-restartPolicyType = "ALWAYS"
+# No startCommand: Railway's startCommand replaces the image's ENTRYPOINT, so
+# setting one here would silently bypass the Dockerfile.
+#
+# ON_FAILURE rather than ALWAYS: nothing exits deliberately any more, so a
+# restart now means something genuinely broke.
+restartPolicyType = "ON_FAILURE"
+healthcheckPath = "/_stcore/health"
 
 # Note: Creator teams updated automatically via in-app scheduler
 # Updates run at 5pm and midnight UK time (handles GMT/BST automatically)
-

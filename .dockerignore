@@ -1,0 +1,54 @@
+# Everything here is excluded from the build context, i.e. from `COPY . .`.
+# Two entries below are load-bearing rather than cosmetic: .venv/ is 369 MB,
+# and .streamlit/secrets.toml holds live credentials.
+
+# Local virtualenv. Dependencies come from uv.lock in the builder stage.
+.venv/
+venv/
+
+# Secrets. Never bake these into a layer -- anyone who can pull the image
+# can read them, and layer history keeps them even if a later step deletes.
+.env
+.env.*
+.streamlit/secrets.toml
+
+# Version control and agent/editor config
+.git/
+.gitignore
+.github/
+.devcontainer/
+.vscode/
+.cursor/
+.claude/
+mise.toml
+
+# Python build noise
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Logs and local databases (fetch_output.log alone is 3.4 MB)
+*.log
+*.db
+*.sqlite3
+
+# Build definitions. This file stays at the context root (Docker resolves
+# .dockerignore against the context, not against the Dockerfile's location),
+# but nothing in deploy/ belongs inside the image.
+deploy/
+.dockerignore
+compose.yaml
+
+# Platform config. Railway reads these from the *repo*, not from the image,
+# so excluding them here is safe and keeps the image free of dead files.
+Procfile
+runtime.txt
+railway.toml
+
+# Docs and tests. `--no-dev` means pytest isn't installed in the image, so
+# the tests could not run there anyway.
+README.md
+tests/

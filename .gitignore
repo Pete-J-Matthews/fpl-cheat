@@ -46,7 +46,9 @@ ehthumbs.db
 Thumbs.db
 
 # Streamlit
-.streamlit/
+# Only secrets are ignored. config.toml must be tracked or builds from a
+# fresh clone (i.e. every Railway build) silently lose it.
+.streamlit/secrets.toml
 
 # Logs
 *.log
