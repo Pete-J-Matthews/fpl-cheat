@@ -157,5 +157,6 @@ The database is not persisted to a named volume, so removing `fpl-db` drops the 
 
 ## Without Docker
 
-`mise` points at `.venv`, so `uv run streamlit run app.py` works too — you just have to supply `DATABASE_URL`
-yourself. See the README for running scripts against production inside Railway over SSH.
+`uv run streamlit run app.py` works too — you just have to supply `DATABASE_URL` yourself. There is no
+`mise.toml`; `uv run` resolves `.venv` on its own. See the README for running scripts against production
+inside Railway over SSH.
