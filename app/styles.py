@@ -107,6 +107,11 @@ section[data-testid="stHeader"],div[data-testid="stToolbar"],div[data-testid="st
 .stApp [class*="similar_teams_pills"] button[kind="primary"],.stApp [class*="similar_teams_pills"] button[data-testid="stBaseButton-primary"],.stApp [class*="similar-teams-pills"] button[kind="primary"],.stApp [class*="similar-teams-pills"] button[data-testid="stBaseButton-primary"]{{background:var(--fpl-accent) !important;background-color:var(--fpl-accent) !important;color:#f5f4f0 !important;border:2px solid rgba(245,244,240,0.9) !important;box-shadow:0 0 0 1px var(--fpl-accent) !important;font-weight:600 !important;}}
 .stApp [class*="similar_teams_pills"] button[kind="primary"]:hover,.stApp [class*="similar_teams_pills"] button[data-testid="stBaseButton-primary"]:hover,.stApp [class*="similar-teams-pills"] button[kind="primary"]:hover,.stApp [class*="similar-teams-pills"] button[data-testid="stBaseButton-primary"]:hover{{background:var(--fpl-accent-hover) !important;border-color:rgba(245,244,240,0.95) !important;}}
 .stApp .section-card [data-testid="column"]{{padding-left:0.35rem;padding-right:0.35rem;}}
+/* Narrow viewports: stack the two team boxes vertically (one on top of the other)
+   instead of squeezing them side by side, so each team keeps its formation + gaps. */
+@media (max-width: 1024px){{
+  .team-comparison-row{{flex-direction:column;}}
+}}
 """
 
 
