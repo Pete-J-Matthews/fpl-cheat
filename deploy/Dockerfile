@@ -9,8 +9,10 @@ ENV UV_COMPILE_BYTECODE=1 \
 
 WORKDIR /app
 
-# Mount the cache pyproject.toml and uv.lock files
-RUN --mount=type=cache,target=/root/.cache/uv \
+# Mount the cache pyproject.toml and uv.lock files.
+# Railway's builder rejects a cache mount without an explicit id (local Docker
+# defaults it to the target path); keep the id or the remote build fails.
+RUN --mount=type=cache,id=uv-cache,target=/root/.cache/uv \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     uv sync --locked --no-dev
