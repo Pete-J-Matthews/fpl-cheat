@@ -2,33 +2,11 @@
 Rendering functions for displaying FPL team picks and player cards.
 """
 
-import os
-import base64
 from typing import List, Dict, Optional, Set
 
 import streamlit as st
 
-
-def ensure_shirt(team_code: str, team_short: Optional[str] = None) -> Optional[str]:
-    """Return local jersey path from assets/jerseys; prefers {SHORT}.png then shirt_{code}.png."""
-    base = os.path.join("assets", "jerseys")
-    os.makedirs(base, exist_ok=True)
-    if team_short:
-        by_short = os.path.join(base, f"{str(team_short).upper()}.png")
-        if os.path.exists(by_short):
-            return by_short
-    by_code = os.path.join(base, f"shirt_{team_code}.png")
-    return by_code if os.path.exists(by_code) else None
-
-
-@st.cache_data(show_spinner=False)
-def _b64_image(path: str) -> Optional[str]:
-    """Convert image file to base64 string."""
-    try:
-        with open(path, "rb") as f:
-            return base64.b64encode(f.read()).decode("ascii")
-    except Exception:
-        return None
+from app.assets import get_jersey_b64
 
 
 @st.cache_data(show_spinner=False)
@@ -64,25 +42,18 @@ def render_picks_table(picks: List[Dict], element_lookup: Dict[int, Dict[str, st
 
 def _render_player_card(col, name: str, position: str, team_code: str, is_captain: bool, is_vice: bool, team_short: Optional[str] = None):
     """Render a single player card with jersey image."""
-    path = ensure_shirt(team_code, team_short)
-    if path:
-        b64 = _b64_image(path)
-        if b64:
-            col.markdown(
-                f"""
-                <div class="player-card">
-                    <img src="data:image/png;base64,{b64}" alt="{name}" />
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-        else:
-            col.markdown(
-                f"<div class='player-card'>shirt {team_code}</div>",
-                unsafe_allow_html=True,
-            )
+    b64 = get_jersey_b64(team_short)
+    if b64:
+        col.markdown(
+            f"""
+            <div class="player-card">
+                <img src="data:image/png;base64,{b64}" alt="{name}" />
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
     else:
-        # Placeholder box if image missing
+        # Placeholder box if the jersey isn't available
         col.markdown(
             f"<div class='player-card'>shirt {team_code}</div>",
             unsafe_allow_html=True,
@@ -122,16 +93,8 @@ def _player_card_html(
     common_player_ids: Optional[Set[int]],
 ) -> str:
     """Return HTML for one player card (for use in pitch_as_html). Name on first row; position and captaincy on second for equal-sized pills."""
-    path = ensure_shirt(team_code, team_short)
-    img_html = ""
-    if path:
-        b64 = _b64_image(path)
-        if b64:
-            img_html = f'<img src="data:image/png;base64,{b64}" alt="{name}" />'
-        else:
-            img_html = f'<span>shirt {team_code}</span>'
-    else:
-        img_html = f'<span>shirt {team_code}</span>'
+    b64 = get_jersey_b64(team_short)
+    img_html = f'<img src="data:image/png;base64,{b64}" alt="{name}" />' if b64 else f'<span>shirt {team_code}</span>'
     meta_parts = [position] if position else []
     if is_captain:
         meta_parts.append("C")

@@ -83,6 +83,5 @@ __pypackages__/
 .env.test.local
 .env.production.local
 
-# Dev containers and IDE configs
-.devcontainer/
+# IDE configs
 .cursor/

@@ -3,13 +3,12 @@ Minimal Streamlit app: search manager → fetch team → compare with creators.
 Clean structure: header, then section cards (Select Your Team, Similar Teams, Team Comparison).
 """
 
-import base64
-import os
 import time
 
 import streamlit as st
 from streamlit_searchbox import st_searchbox
 
+from app.assets import get_favicon_data_uri
 from app.cache import (
     build_lookups,
     fetch_bootstrap_cached,
@@ -26,16 +25,9 @@ from app.rendering import creator_team_to_picks, pitch_as_html, render_pitch
 from app.scheduler import is_scheduler_running, start_scheduler
 from app.styles import get_app_styles
 
-favicon_path = os.path.join("assets", "favicon.svg")
-st.set_page_config(page_title="FPL Cheat", page_icon=favicon_path, layout="wide")
-
-
-def _get_favicon_base64() -> str:
-    try:
-        with open(favicon_path, "rb") as f:
-            return base64.b64encode(f.read()).decode("ascii")
-    except Exception:
-        return ""
+# Streamlit passes a data: URI straight through; raw SVG bytes would fail.
+_FAVICON_DATA_URI = get_favicon_data_uri()
+st.set_page_config(page_title="FPL Cheat", page_icon=_FAVICON_DATA_URI or "⚽", layout="wide")
 
 if not is_scheduler_running():
     start_scheduler()
@@ -44,11 +36,12 @@ if not is_scheduler_running():
 def main():
     st.markdown(get_app_styles(), unsafe_allow_html=True)
 
-    favicon_b64 = _get_favicon_base64()
+    # An empty src renders a broken-image icon, so omit the tag entirely.
+    logo_img = f'<img src="{_FAVICON_DATA_URI}" width="52" height="52" alt="FPL Cheat" />' if _FAVICON_DATA_URI else ""
     st.markdown(f"""
         <div class="app-header">
             <div class="logo-title">
-                <img src="data:image/svg+xml;base64,{favicon_b64}" width="52" height="52" alt="FPL Cheat" />
+                {logo_img}
                 <h1>FPL Cheat</h1>
             </div>
             <p class="tagline">Are your mates cheating by copying FPL teams to get ahead? 
