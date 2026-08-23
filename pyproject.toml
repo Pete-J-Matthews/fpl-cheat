@@ -25,6 +25,8 @@ package = false
 [tool.ruff]
 line-length = 88
 target-version = "py311"
+# Agent config, not project source -- ruff formats Python blocks in Markdown.
+extend-exclude = [".claude", ".cursor"]
 
 [tool.ruff.lint]
 # Ruff's default rule set, minus the ones this codebase contradicts by design.

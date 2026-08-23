@@ -3,7 +3,6 @@
 import base64
 import logging
 import os
-from typing import Optional
 
 import streamlit as st
 
@@ -17,7 +16,7 @@ class AssetUnavailable(RuntimeError):
     """The asset could not be fetched from the bucket."""
 
 
-def _bucket() -> Optional[str]:
+def _bucket() -> str | None:
     return os.getenv("AWS_S3_BUCKET_NAME") or None
 
 
@@ -25,7 +24,14 @@ def _bucket() -> Optional[str]:
 def _client():
     """Shared S3 client, or None when the bucket isn't configured."""
     endpoint = os.getenv("AWS_ENDPOINT_URL")
-    if not all((os.getenv("AWS_ACCESS_KEY_ID"), os.getenv("AWS_SECRET_ACCESS_KEY"), endpoint, _bucket())):
+    if not all(
+        (
+            os.getenv("AWS_ACCESS_KEY_ID"),
+            os.getenv("AWS_SECRET_ACCESS_KEY"),
+            endpoint,
+            _bucket(),
+        )
+    ):
         logger.warning("Asset bucket not configured; falling back to placeholders.")
         return None
 
@@ -60,7 +66,7 @@ def _object_b64(key: str) -> str:
     return base64.b64encode(body).decode("ascii")
 
 
-def get_favicon_data_uri() -> Optional[str]:
+def get_favicon_data_uri() -> str | None:
     """Favicon as a data: URI, or None if unavailable."""
     try:
         return f"data:image/svg+xml;base64,{_object_b64(FAVICON_KEY)}"
@@ -68,7 +74,7 @@ def get_favicon_data_uri() -> Optional[str]:
         return None
 
 
-def get_jersey_b64(team_short: Optional[str]) -> Optional[str]:
+def get_jersey_b64(team_short: str | None) -> str | None:
     """Base64 PNG for a club's jersey by 3-letter short code, or None."""
     if not team_short:
         return None

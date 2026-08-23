@@ -21,13 +21,15 @@ from app.components import (
     render_similar_teams,
     run_compare_if_needed,
 )
-from app.rendering import creator_team_to_picks, pitch_as_html, render_pitch
+from app.rendering import creator_team_to_picks, pitch_as_html
 from app.scheduler import is_scheduler_running, start_scheduler
 from app.styles import get_app_styles
 
 # Streamlit passes a data: URI straight through; raw SVG bytes would fail.
 _FAVICON_DATA_URI = get_favicon_data_uri()
-st.set_page_config(page_title="FPL Cheat", page_icon=_FAVICON_DATA_URI or "⚽", layout="wide")
+st.set_page_config(
+    page_title="FPL Cheat", page_icon=_FAVICON_DATA_URI or "⚽", layout="wide"
+)
 
 if not is_scheduler_running():
     start_scheduler()
@@ -37,17 +39,24 @@ def main():
     st.markdown(get_app_styles(), unsafe_allow_html=True)
 
     # An empty src renders a broken-image icon, so omit the tag entirely.
-    logo_img = f'<img src="{_FAVICON_DATA_URI}" width="52" height="52" alt="FPL Cheat" />' if _FAVICON_DATA_URI else ""
-    st.markdown(f"""
+    logo_img = (
+        f'<img src="{_FAVICON_DATA_URI}" width="52" height="52" alt="FPL Cheat" />'
+        if _FAVICON_DATA_URI
+        else ""
+    )
+    st.markdown(
+        f"""
         <div class="app-header">
             <div class="logo-title">
                 {logo_img}
                 <h1>FPL Cheat</h1>
             </div>
-            <p class="tagline">Are your mates cheating by copying FPL teams to get ahead? 
+            <p class="tagline">Are your mates cheating by copying FPL teams to get ahead?
             <br> Catch them out using this team similarity tool.</p>
         </div>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
 
     event_id = get_current_event_id_cached()
 
@@ -92,7 +101,9 @@ def main():
                     key="manager_searchbox",
                     clear_on_submit=False,  # we set search term in submit_function instead
                     default_options=[],
-                    default_searchterm=st.session_state.get("manager_searchbox", {}).get("search", ""),  # show selected name after submit
+                    default_searchterm=st.session_state.get(
+                        "manager_searchbox", {}
+                    ).get("search", ""),  # show selected name after submit
                     submit_function=_on_manager_submit,
                     rerun_scope="fragment",  # only this fragment reruns on keystroke, not whole app
                     style_overrides={
@@ -154,10 +165,22 @@ def main():
             def similar_teams_and_comparison():
                 selected_creator_team = render_similar_teams()
                 if selected_creator_team:
-                    creator_picks = creator_team_to_picks(selected_creator_team, element_lookup)
-                    manager_name = selected_creator_team.get("manager_name", "Creator Team")
-                    user_player_ids = {int(p.get("element")) for p in user_picks if p.get("element") is not None}
-                    creator_player_ids = {int(p.get("element")) for p in creator_picks if p.get("element") is not None}
+                    creator_picks = creator_team_to_picks(
+                        selected_creator_team, element_lookup
+                    )
+                    manager_name = selected_creator_team.get(
+                        "manager_name", "Creator Team"
+                    )
+                    user_player_ids = {
+                        int(p.get("element"))
+                        for p in user_picks
+                        if p.get("element") is not None
+                    }
+                    creator_player_ids = {
+                        int(p.get("element"))
+                        for p in creator_picks
+                        if p.get("element") is not None
+                    }
                     common_player_ids = user_player_ids & creator_player_ids
                     team1_html = pitch_as_html(
                         user_picks,
@@ -192,29 +215,36 @@ def main():
                     f'<div class="section-header-row">'
                     f'<h3 class="section-title" id="team-comparison">Team Comparison</h3>'
                     f'<span class="section-gw">Gameweek {event_id}</span>'
-                    f'</div>'
+                    f"</div>"
                     f'<div class="team-comparison-row">'
                     f'<div class="team-box">{team1_html}</div>'
                     f'<div class="team-box">{team2_html}</div>'
-                    f'</div></div>',
+                    f"</div></div>",
                     unsafe_allow_html=True,
                 )
 
             similar_teams_and_comparison()
         else:
             # No similar teams yet; show comparison section with placeholder only
-            team1_html = pitch_as_html(user_picks, element_lookup, team_lookup, title="Your Team", show_bench=True, small=True)
+            team1_html = pitch_as_html(
+                user_picks,
+                element_lookup,
+                team_lookup,
+                title="Your Team",
+                show_bench=True,
+                small=True,
+            )
             team2_html = '<p class="team-box-placeholder">👆 Select a creator team above to compare</p>'
             st.markdown(
                 f'<div class="section-card team-comparison-section">'
                 f'<div class="section-header-row">'
                 f'<h3 class="section-title" id="team-comparison">Team Comparison</h3>'
                 f'<span class="section-gw">Gameweek {event_id}</span>'
-                f'</div>'
+                f"</div>"
                 f'<div class="team-comparison-row">'
                 f'<div class="team-box">{team1_html}</div>'
                 f'<div class="team-box">{team2_html}</div>'
-                f'</div></div>',
+                f"</div></div>",
                 unsafe_allow_html=True,
             )
 

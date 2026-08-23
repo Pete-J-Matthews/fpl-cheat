@@ -2,8 +2,6 @@
 Shared FPL API constants and utility functions.
 """
 
-from typing import Dict, Optional
-
 import requests
 
 # FPL API Configuration
@@ -20,13 +18,13 @@ FPL_HEADERS = {
 POSITION_MAP = {1: "GKP", 2: "DEF", 3: "MID", 4: "FWD"}
 
 
-def fetch_bootstrap() -> Optional[Dict]:
+def fetch_bootstrap() -> dict | None:
     """Fetch bootstrap data from FPL API."""
     try:
         r = requests.get(FPL_BOOTSTRAP_URL, timeout=10, headers=FPL_HEADERS)
         r.raise_for_status()
         return r.json()
-    except Exception as e:
+    except Exception:
         return None
 
 
@@ -44,12 +42,12 @@ def get_current_event_id() -> int:
         for ev in events:
             if ev.get("is_next"):
                 return int(ev.get("id", 1))
-    except Exception: # Graceful fallback: return default gameweek 1 if API call fails
+    except Exception:  # Graceful fallback: return default gameweek 1 if API call fails
         pass
     return 1
 
 
-def fetch_entry_picks(manager_id: int, event_id: int) -> Optional[Dict]:
+def fetch_entry_picks(manager_id: int, event_id: int) -> dict | None:
     """Fetch picks for a manager for a specific gameweek."""
     try:
         resp = requests.get(
@@ -63,17 +61,19 @@ def fetch_entry_picks(manager_id: int, event_id: int) -> Optional[Dict]:
         return None
 
 
-def build_element_lookup(bootstrap: Dict, include_team_id: bool = False) -> Dict[int, Dict[str, str]]:
+def build_element_lookup(
+    bootstrap: dict, include_team_id: bool = False
+) -> dict[int, dict[str, str]]:
     """Build lookup dictionary for player elements.
-    
+
     Args:
         bootstrap: Bootstrap data from FPL API
         include_team_id: If True, include team_id in the lookup
-        
+
     Returns:
         element_lookup[element_id] -> {name, position[, team_id]}
     """
-    element_lookup: Dict[int, Dict[str, str]] = {}
+    element_lookup: dict[int, dict[str, str]] = {}
     elements = bootstrap.get("elements") or []
 
     for e in elements:
@@ -89,4 +89,3 @@ def build_element_lookup(bootstrap: Dict, include_team_id: bool = False) -> Dict
             continue
 
     return element_lookup
-

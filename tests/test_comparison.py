@@ -1,4 +1,4 @@
-import app.comparison as comparison
+from app import comparison
 
 
 def test_extract_player_ids_from_picks():
@@ -62,8 +62,18 @@ def test_find_top_similar_teams_sorts_and_limits():
 
     user_picks = [{"element": 1}, {"element": 2}, {"element": 3}]
     creator_teams = [
-        {"manager_name": "team1", "player_1": "A (GKP)", "player_2": "B (DEF)", "player_3": "C (MID)"},
-        {"manager_name": "team2", "player_1": "A (GKP)", "player_2": "D (DEF)", "player_3": "E (MID)"},
+        {
+            "manager_name": "team1",
+            "player_1": "A (GKP)",
+            "player_2": "B (DEF)",
+            "player_3": "C (MID)",
+        },
+        {
+            "manager_name": "team2",
+            "player_1": "A (GKP)",
+            "player_2": "D (DEF)",
+            "player_3": "E (MID)",
+        },
         {"manager_name": "team3", "player_1": "B (DEF)", "player_2": "C (MID)"},
     ]
 
@@ -81,4 +91,3 @@ def test_find_top_similar_teams_sorts_and_limits():
     assert top[1][0]["manager_name"] == "team3"
     # team3: {2,3} vs {1,2,3} => common=2, max_team_size=3 => 66.7
     assert top[1][1] == 66.7
-

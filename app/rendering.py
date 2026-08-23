@@ -2,15 +2,15 @@
 Rendering functions for displaying FPL team picks and player cards.
 """
 
-from typing import List, Dict, Optional, Set
-
 import streamlit as st
 
 from app.assets import get_jersey_b64
 
 
 @st.cache_data(show_spinner=False)
-def get_opponent_label(player_team_id: int, fixtures: List[Dict], team_lookup: Dict[int, Dict[str, str]]) -> str:
+def get_opponent_label(
+    player_team_id: int, fixtures: list[dict], team_lookup: dict[int, dict[str, str]]
+) -> str:
     """Get opponent label for a player's team in the current gameweek."""
     for fx in fixtures:
         th = int(fx.get("team_h", 0))
@@ -26,7 +26,7 @@ def get_opponent_label(player_team_id: int, fixtures: List[Dict], team_lookup: D
     return short
 
 
-def render_picks_table(picks: List[Dict], element_lookup: Dict[int, Dict[str, str]]):
+def render_picks_table(picks: list[dict], element_lookup: dict[int, dict[str, str]]):
     """Render picks as a simple table."""
     rows = [
         {
@@ -40,7 +40,15 @@ def render_picks_table(picks: List[Dict], element_lookup: Dict[int, Dict[str, st
     st.table(rows)
 
 
-def _render_player_card(col, name: str, position: str, team_code: str, is_captain: bool, is_vice: bool, team_short: Optional[str] = None):
+def _render_player_card(
+    col,
+    name: str,
+    position: str,
+    team_code: str,
+    is_captain: bool,
+    is_vice: bool,
+    team_short: str | None = None,
+):
     """Render a single player card with jersey image."""
     b64 = get_jersey_b64(team_short)
     if b64:
@@ -67,7 +75,12 @@ def _render_player_card(col, name: str, position: str, team_code: str, is_captai
     col.markdown(f"**{label}**")
 
 
-def _render_player_row(picks: List[Dict], element_lookup: Dict[int, Dict[str, str]], team_lookup: Dict[int, Dict[str, str]], fixtures: List[Dict]):
+def _render_player_row(
+    picks: list[dict],
+    element_lookup: dict[int, dict[str, str]],
+    team_lookup: dict[int, dict[str, str]],
+    fixtures: list[dict],
+):
     """Helper to render a row of players."""
     cols = st.columns(len(picks))
     for idx, p in enumerate(picks):
@@ -78,7 +91,15 @@ def _render_player_row(picks: List[Dict], element_lookup: Dict[int, Dict[str, st
         name = meta.get("name", "")
         position = meta.get("position", "")
         team_short = team_lookup.get(team_id, {}).get("short_name", "")
-        _render_player_card(cols[idx], name, position, str(team_code), bool(p.get("is_captain")), bool(p.get("is_vice_captain")), team_short)
+        _render_player_card(
+            cols[idx],
+            name,
+            position,
+            str(team_code),
+            bool(p.get("is_captain")),
+            bool(p.get("is_vice_captain")),
+            team_short,
+        )
 
 
 def _player_card_html(
@@ -87,14 +108,18 @@ def _player_card_html(
     team_code: str,
     is_captain: bool,
     is_vice: bool,
-    team_short: Optional[str],
+    team_short: str | None,
     small: bool,
     element_id: int,
-    common_player_ids: Optional[Set[int]],
+    common_player_ids: set[int] | None,
 ) -> str:
     """Return HTML for one player card (for use in pitch_as_html). Name on first row; position and captaincy on second for equal-sized pills."""
     b64 = get_jersey_b64(team_short)
-    img_html = f'<img src="data:image/png;base64,{b64}" alt="{name}" />' if b64 else f'<span>shirt {team_code}</span>'
+    img_html = (
+        f'<img src="data:image/png;base64,{b64}" alt="{name}" />'
+        if b64
+        else f"<span>shirt {team_code}</span>"
+    )
     meta_parts = [position] if position else []
     if is_captain:
         meta_parts.append("C")
@@ -110,18 +135,25 @@ def _player_card_html(
 
 
 def pitch_as_html(
-    picks: List[Dict],
-    element_lookup: Dict[int, Dict[str, str]],
-    team_lookup: Dict[int, Dict[str, str]],
-    title: Optional[str] = None,
+    picks: list[dict],
+    element_lookup: dict[int, dict[str, str]],
+    team_lookup: dict[int, dict[str, str]],
+    title: str | None = None,
     show_bench: bool = True,
     small: bool = True,
-    common_player_ids: Optional[Set[int]] = None,
+    common_player_ids: set[int] | None = None,
 ) -> str:
     """Return HTML for a team pitch (for embedding in team-box). Uses smaller cards when small=True."""
-    starters = [p for p in picks if int(p.get("multiplier", 0)) > 0 and int(p.get("position", 0)) <= 11]
-    bench = sorted([p for p in picks if int(p.get("position", 0)) >= 12], key=lambda x: int(x.get("position", 0)))
-    lines: Dict[str, List[Dict]] = {"GKP": [], "DEF": [], "MID": [], "FWD": []}
+    starters = [
+        p
+        for p in picks
+        if int(p.get("multiplier", 0)) > 0 and int(p.get("position", 0)) <= 11
+    ]
+    bench = sorted(
+        [p for p in picks if int(p.get("position", 0)) >= 12],
+        key=lambda x: int(x.get("position", 0)),
+    )
+    lines: dict[str, list[dict]] = {"GKP": [], "DEF": [], "MID": [], "FWD": []}
     for p in starters:
         el = int(p.get("element"))
         meta = element_lookup.get(el, {})
@@ -184,42 +216,44 @@ def pitch_as_html(
     return "".join(parts)
 
 
-def creator_team_to_picks(creator_team: Dict, element_lookup: Dict[int, Dict[str, str]]) -> List[Dict]:
+def creator_team_to_picks(
+    creator_team: dict, element_lookup: dict[int, dict[str, str]]
+) -> list[dict]:
     """
     Convert creator team data (player_1 through player_15 strings) to picks format.
-    
+
     Args:
         creator_team: Dict with player_1 through player_15 keys
         element_lookup: Element lookup dict
-    
+
     Returns:
         List of pick dicts in format compatible with render_pitch
     """
     picks = []
-    
+
     # Create reverse lookup: name -> element_id
     name_to_id = {}
     for element_id, data in element_lookup.items():
         name = data.get("name", "").strip()
         if name:
             name_to_id[name.lower()] = element_id
-    
+
     # Parse each player string
     for i in range(1, 16):
         player_str = creator_team.get(f"player_{i}")
         if not player_str:
             continue
-        
+
         # Parse format: "Name (POS)" or "Name (POS) (C)" or "Name (POS) (VC)"
         # Extract name (everything before first "(")
         name_part = player_str.split("(")[0].strip()
         if not name_part:
             continue
-        
+
         # Extract position and captaincy
         is_captain = "(C)" in player_str
         is_vice_captain = "(VC)" in player_str
-        
+
         # Find element ID
         element_id = None
         # Try exact match first
@@ -227,10 +261,12 @@ def creator_team_to_picks(creator_team: Dict, element_lookup: Dict[int, Dict[str
         if not element_id:
             # Try partial match
             for lookup_name, lookup_id in name_to_id.items():
-                if lookup_name.startswith(name_part.lower()) or name_part.lower().startswith(lookup_name):
+                if lookup_name.startswith(
+                    name_part.lower()
+                ) or name_part.lower().startswith(lookup_name):
                     element_id = lookup_id
                     break
-        
+
         if element_id:
             # Create pick dict
             pick = {
@@ -241,13 +277,20 @@ def creator_team_to_picks(creator_team: Dict, element_lookup: Dict[int, Dict[str
                 "is_vice_captain": is_vice_captain,
             }
             picks.append(pick)
-    
+
     return picks
 
 
-def render_pitch(picks: List[Dict], element_lookup: Dict[int, Dict[str, str]], team_lookup: Dict[int, Dict[str, str]], fixtures: List[Dict], show_bench: bool = True, title: Optional[str] = None):
+def render_pitch(
+    picks: list[dict],
+    element_lookup: dict[int, dict[str, str]],
+    team_lookup: dict[int, dict[str, str]],
+    fixtures: list[dict],
+    show_bench: bool = True,
+    title: str | None = None,
+):
     """Render team picks in a pitch formation layout.
-    
+
     Args:
         picks: List of pick dicts
         element_lookup: Element lookup dict
@@ -258,11 +301,18 @@ def render_pitch(picks: List[Dict], element_lookup: Dict[int, Dict[str, str]], t
     """
     if title:
         st.markdown(f"**{title}**")
-    
-    starters = [p for p in picks if int(p.get("multiplier", 0)) > 0 and int(p.get("position", 0)) <= 11]
-    bench = sorted([p for p in picks if int(p.get("position", 0)) >= 12], key=lambda x: int(x.get("position", 0)))
 
-    lines: Dict[str, List[Dict]] = {"GKP": [], "DEF": [], "MID": [], "FWD": []}
+    starters = [
+        p
+        for p in picks
+        if int(p.get("multiplier", 0)) > 0 and int(p.get("position", 0)) <= 11
+    ]
+    bench = sorted(
+        [p for p in picks if int(p.get("position", 0)) >= 12],
+        key=lambda x: int(x.get("position", 0)),
+    )
+
+    lines: dict[str, list[dict]] = {"GKP": [], "DEF": [], "MID": [], "FWD": []}
     for p in starters:
         el = int(p.get("element"))
         meta = element_lookup.get(el, {})
@@ -275,9 +325,10 @@ def render_pitch(picks: List[Dict], element_lookup: Dict[int, Dict[str, str]], t
         if row:
             _render_player_row(row, element_lookup, team_lookup, fixtures)
             # Reduce spacing between rows
-            st.markdown("<div style='margin-bottom: -0.5rem;'></div>", unsafe_allow_html=True)
+            st.markdown(
+                "<div style='margin-bottom: -0.5rem;'></div>", unsafe_allow_html=True
+            )
 
     if show_bench and bench:
         st.markdown("**Bench:**")
         _render_player_row(bench, element_lookup, team_lookup, fixtures)
-

@@ -118,6 +118,7 @@ section[data-testid="stHeader"],div[data-testid="stToolbar"],div[data-testid="st
 def get_app_styles() -> str:
     """Return HTML that injects app CSS via a data URI."""
     import base64
+
     css = get_app_css().strip()
     b64 = base64.b64encode(css.encode("utf-8")).decode("ascii")
     return f'<link rel="stylesheet" href="data:text/css;base64,{b64}">'

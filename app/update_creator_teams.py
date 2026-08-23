@@ -1,7 +1,6 @@
 """Fetches current gameweek squads for content creator teams and stores them in PostgreSQL."""
 
 import time
-from typing import Dict, List
 
 from app.database import (
     get_current_creator_gameweek,
@@ -16,25 +15,77 @@ from app.fpl_api import (
 )
 
 CREATOR_TEAM_IDS = [
-    44, 200, 1320, 1587, 14501, 16267, 6586, 441, 1924811, 1514450,
-    260, 341, 135, 7577129, 16725, 3570, 17614, 963, 251, 698910, 2253812,
-    2869, 2140, 2974, 1536, 68585, 156, 11539, 24194, 9505, 20360,
+    44,
+    200,
+    1320,
+    1587,
+    14501,
+    16267,
+    6586,
+    441,
+    1924811,
+    1514450,
+    260,
+    341,
+    135,
+    7577129,
+    16725,
+    3570,
+    17614,
+    963,
+    251,
+    698910,
+    2253812,
+    2869,
+    2140,
+    2974,
+    1536,
+    68585,
+    156,
+    11539,
+    24194,
+    9505,
+    20360,
 ]
 
 TEAM_INFO = {
-    44: 'Lets Talk FPL', 200: 'FPL Focal', 1320: 'FPL Harry', 1587: 'FPL Raptor',
-    14501: 'FPL Pickle', 16267: 'FPL Mate', 6586: 'Ben Crellin', 441: 'Az Phillips',
-    1924811: 'Kelly Somers', 1514450: 'Julien Laurens', 260: 'Sam Bonfield',
-    341: 'Lee Bonfield', 135: 'Holly Shand', 7577129: 'Ian Irwing', 16725: 'FPL Sonaldo',
-    3570: 'Pras', 17614: 'Gianni Buttice', 963: 'BigMan Bakar', 251: 'Yelena',
-    698910: 'Stormzy', 2253812: 'Chunkz',
-    2869: 'Fabio Borges', 2140: 'FPL Family', 2974: 'FPL Goat', 1536: 'FPL Hints',
-    68585: 'FPL Matthew', 156: 'FPL Salah', 11539: 'Jian Batra', 24194: 'Lateriser',
-    9505: 'Zophar', 20360: 'Andy Martin FPL',
+    44: "Lets Talk FPL",
+    200: "FPL Focal",
+    1320: "FPL Harry",
+    1587: "FPL Raptor",
+    14501: "FPL Pickle",
+    16267: "FPL Mate",
+    6586: "Ben Crellin",
+    441: "Az Phillips",
+    1924811: "Kelly Somers",
+    1514450: "Julien Laurens",
+    260: "Sam Bonfield",
+    341: "Lee Bonfield",
+    135: "Holly Shand",
+    7577129: "Ian Irwing",
+    16725: "FPL Sonaldo",
+    3570: "Pras",
+    17614: "Gianni Buttice",
+    963: "BigMan Bakar",
+    251: "Yelena",
+    698910: "Stormzy",
+    2253812: "Chunkz",
+    2869: "Fabio Borges",
+    2140: "FPL Family",
+    2974: "FPL Goat",
+    1536: "FPL Hints",
+    68585: "FPL Matthew",
+    156: "FPL Salah",
+    11539: "Jian Batra",
+    24194: "Lateriser",
+    9505: "Zophar",
+    20360: "Andy Martin FPL",
 }
 
 
-def format_player(element_id: int, is_captain: bool, is_vice_captain: bool, lookup: Dict) -> str:
+def format_player(
+    element_id: int, is_captain: bool, is_vice_captain: bool, lookup: dict
+) -> str:
     """Format player as 'Name (POS)' with optional '(C)' or '(VC)'."""
     data = lookup.get(element_id, {})
     name = data.get("name", "Unknown")
@@ -48,15 +99,21 @@ def get_manager_name(team_id: int) -> str:
     if team_id in TEAM_INFO:
         return TEAM_INFO[team_id]
     manager = get_manager_by_id(team_id)
-    return manager.get("manager_name", f"Manager {team_id}") if manager else f"Manager {team_id}"
+    return (
+        manager.get("manager_name", f"Manager {team_id}")
+        if manager
+        else f"Manager {team_id}"
+    )
 
 
-def update_all_creator_teams(progress_callback=None) -> Dict[str, int]:
+def update_all_creator_teams(progress_callback=None) -> dict[str, int]:
     """Update all creator teams using CREATOR_TEAM_IDS."""
     return update_creator_teams(CREATOR_TEAM_IDS, progress_callback)
 
 
-def update_creator_teams(creator_team_ids: List[int], progress_callback=None) -> Dict[str, int]:
+def update_creator_teams(
+    creator_team_ids: list[int], progress_callback=None
+) -> dict[str, int]:
     """Update creator teams in the database."""
     if not creator_team_ids:
         return {"success": 0, "failed": 0, "total": 0, "already_up_to_date": False}
@@ -64,10 +121,15 @@ def update_creator_teams(creator_team_ids: List[int], progress_callback=None) ->
     current_gw = get_current_event_id()
     if progress_callback:
         progress_callback(f"Checking current gameweek: {current_gw}")
-    
+
     if get_current_creator_gameweek() == current_gw:
-        return {"success": 0, "failed": 0, "total": len(creator_team_ids), "already_up_to_date": True}
-    
+        return {
+            "success": 0,
+            "failed": 0,
+            "total": len(creator_team_ids),
+            "already_up_to_date": True,
+        }
+
     if progress_callback:
         progress_callback(f"Updating for gameweek {current_gw}...")
 
@@ -75,7 +137,11 @@ def update_creator_teams(creator_team_ids: List[int], progress_callback=None) ->
     if not bootstrap:
         if progress_callback:
             progress_callback("Error: Failed to fetch bootstrap data")
-        return {"success": 0, "failed": len(creator_team_ids), "total": len(creator_team_ids)}
+        return {
+            "success": 0,
+            "failed": len(creator_team_ids),
+            "total": len(creator_team_ids),
+        }
 
     element_lookup = build_element_lookup(bootstrap)
     success_count = failed_count = 0
@@ -83,7 +149,9 @@ def update_creator_teams(creator_team_ids: List[int], progress_callback=None) ->
     for idx, team_id in enumerate(creator_team_ids):
         manager_name = get_manager_name(team_id)
         if progress_callback:
-            progress_callback(f"Updating {idx + 1}/{len(creator_team_ids)}: {manager_name}")
+            progress_callback(
+                f"Updating {idx + 1}/{len(creator_team_ids)}: {manager_name}"
+            )
 
         picks_data = fetch_entry_picks(team_id, current_gw)
         picks = picks_data.get("picks") if picks_data else []
@@ -96,7 +164,7 @@ def update_creator_teams(creator_team_ids: List[int], progress_callback=None) ->
             "team_id": team_id,
             "manager_name": manager_name,
             "current_gameweek": current_gw,
-            **{f"player_{i}": None for i in range(1, 16)}
+            **{f"player_{i}": None for i in range(1, 16)},
         }
 
         for pick in picks:
@@ -106,7 +174,7 @@ def update_creator_teams(creator_team_ids: List[int], progress_callback=None) ->
                     int(pick.get("element", 0)),
                     bool(pick.get("is_captain", False)),
                     bool(pick.get("is_vice_captain", False)),
-                    element_lookup
+                    element_lookup,
                 )
 
         if upsert_creator_team(team_data):
@@ -115,4 +183,9 @@ def update_creator_teams(creator_team_ids: List[int], progress_callback=None) ->
             failed_count += 1
         time.sleep(0.5)
 
-    return {"success": success_count, "failed": failed_count, "total": len(creator_team_ids), "already_up_to_date": False}
+    return {
+        "success": success_count,
+        "failed": failed_count,
+        "total": len(creator_team_ids),
+        "already_up_to_date": False,
+    }

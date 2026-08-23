@@ -1,6 +1,6 @@
 import pytest
 
-import app.fpl_api as fpl_api
+from app import fpl_api
 
 
 class MockResponse:
@@ -110,4 +110,3 @@ def test_fetch_entry_picks_success(monkeypatch):
         manager_id=manager_id, event_id=event_id
     )
     assert calls[0]["timeout"] == 10
-

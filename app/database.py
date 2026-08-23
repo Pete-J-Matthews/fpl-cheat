@@ -4,8 +4,9 @@ Uses Railway PostgreSQL database via DATABASE_URL from environment variable.
 """
 
 import os
+from collections.abc import Callable
 from contextlib import contextmanager
-from typing import Any, Callable, Dict, List, Optional, TypeVar
+from typing import Any, TypeVar
 
 import streamlit as st
 
@@ -16,7 +17,11 @@ except ImportError:
     psycopg2 = None
     RealDictCursor = None
 
-T = TypeVar('T')
+T = TypeVar("T")
+
+
+class DatabaseTimeoutError(Exception):
+    """A query exceeded the database's statement timeout."""
 
 
 def get_database_url():
@@ -29,12 +34,13 @@ def get_database_url():
         )
     return database_url
 
+
 @contextmanager
 def get_connection():
     """Context manager for PostgreSQL connections."""
     if psycopg2 is None:
         raise ImportError("psycopg2 not installed. Run: pip install psycopg2-binary")
-    
+
     conn = psycopg2.connect(get_database_url())
     try:
         yield conn
@@ -51,17 +57,17 @@ def _execute_query(
     params: tuple = (),
     use_dict_cursor: bool = False,
     fetch_one: bool = False,
-    error_handler: Optional[Callable[[Exception], T]] = None,
+    error_handler: Callable[[Exception], T] | None = None,
 ) -> Any:
     """Execute a database query and return results.
-    
+
     Args:
         query: SQL query string
         params: Query parameters
         use_dict_cursor: If True, use RealDictCursor for dict results
         fetch_one: If True, fetch one row; otherwise fetch all
         error_handler: Optional function to handle errors, returns default value
-    
+
     Returns:
         Query results (list of dicts, single dict, single value, True/False for write ops, or None)
     """
@@ -70,15 +76,17 @@ def _execute_query(
             cursor_factory = RealDictCursor if use_dict_cursor else None
             cursor = conn.cursor(cursor_factory=cursor_factory)
             cursor.execute(query, params)
-            
+
             # Check if this is a write operation (INSERT, UPDATE, DELETE)
             query_upper = query.strip().upper()
-            is_write_op = any(query_upper.startswith(op) for op in ['INSERT', 'UPDATE', 'DELETE'])
-            
+            is_write_op = any(
+                query_upper.startswith(op) for op in ["INSERT", "UPDATE", "DELETE"]
+            )
+
             if is_write_op:
                 # For write operations, return True if rows were affected, False otherwise
                 return cursor.rowcount > 0
-            
+
             # For SELECT queries, fetch results as before
             if fetch_one:
                 result = cursor.fetchone()
@@ -100,38 +108,43 @@ def _handle_timeout_error(e: Exception) -> None:
     """Handle database timeout errors with user-friendly message."""
     error_msg = str(e)
     if "timeout" in error_msg.lower() or "57014" in error_msg:
-        raise Exception(
+        raise DatabaseTimeoutError(
             "Database query timed out. The database may be under heavy load. "
             "Please try:\n"
             "1. Using a longer/more specific search term (at least 4 characters)\n"
             "2. Entering your manager ID directly (numbers only)\n"
             "3. Trying again in a few moments"
-        )
-    raise
+        ) from e
+    # Called from inside an except block, so this re-raises the original.
+    raise e
 
 
 def _handle_st_error(operation: str, default_return: Any = None):
     """Return error handler that logs to st.error and returns default value."""
+
     def handler(e: Exception) -> Any:
         st.error(f"Failed to {operation}: {e}")
         return default_return
+
     return handler
 
 
 def _handle_st_debug(operation: str, default_return: Any = None):
     """Return error handler that logs to st.debug and returns default value."""
+
     def handler(e: Exception) -> Any:
         st.debug(f"Failed to {operation}: {e}")
         return default_return
+
     return handler
 
 
-def search_managers(query: str) -> List[Dict]:
+def search_managers(query: str) -> list[dict]:
     """Search `all_managers` by manager_name or team_name using case-insensitive prefix ILIKE."""
     q = query.strip()
     if len(q) < 4:
         return []
-    
+
     pattern = f"{q}%"
     return _execute_query(
         """
@@ -146,20 +159,22 @@ def search_managers(query: str) -> List[Dict]:
     )
 
 
-def upsert_creator_team(team_data: Dict) -> bool:
+def upsert_creator_team(team_data: dict) -> bool:
     """Insert or update a creator team in the creator_teams table."""
     columns = list(team_data.keys())
     values = [team_data[col] for col in columns]
-    placeholders = ', '.join(['%s'] * len(values))
-    column_names = ', '.join(columns)
-    update_set = ', '.join([f"{col} = EXCLUDED.{col}" for col in columns if col != 'team_id'])
-    
+    placeholders = ", ".join(["%s"] * len(values))
+    column_names = ", ".join(columns)
+    update_set = ", ".join(
+        [f"{col} = EXCLUDED.{col}" for col in columns if col != "team_id"]
+    )
+
     query = f"""
         INSERT INTO creator_teams ({column_names})
         VALUES ({placeholders})
         ON CONFLICT (team_id) DO UPDATE SET {update_set}
     """
-    
+
     result = _execute_query(
         query,
         params=tuple(values),
@@ -168,7 +183,7 @@ def upsert_creator_team(team_data: Dict) -> bool:
     return result is not False
 
 
-def get_creator_teams() -> List[Dict]:
+def get_creator_teams() -> list[dict]:
     """Retrieve all creator teams from the database."""
     return _execute_query(
         "SELECT * FROM creator_teams ORDER BY manager_name",
@@ -177,7 +192,7 @@ def get_creator_teams() -> List[Dict]:
     )
 
 
-def get_creator_team(team_id: int) -> Optional[Dict]:
+def get_creator_team(team_id: int) -> dict | None:
     """Get a specific creator team by team_id."""
     return _execute_query(
         "SELECT * FROM creator_teams WHERE team_id = %s",
@@ -188,7 +203,7 @@ def get_creator_team(team_id: int) -> Optional[Dict]:
     )
 
 
-def get_current_creator_gameweek() -> Optional[int]:
+def get_current_creator_gameweek() -> int | None:
     """Get the current gameweek from creator_teams table."""
     return _execute_query(
         "SELECT current_gameweek FROM creator_teams LIMIT 1",
@@ -197,7 +212,7 @@ def get_current_creator_gameweek() -> Optional[int]:
     )
 
 
-def get_manager_by_id(manager_id: int) -> Optional[Dict]:
+def get_manager_by_id(manager_id: int) -> dict | None:
     """Get a manager by their manager_id."""
     return _execute_query(
         "SELECT manager_id, manager_name, team_name FROM all_managers WHERE manager_id = %s",
@@ -211,4 +226,4 @@ def get_manager_by_id(manager_id: int) -> Optional[Dict]:
 # Legacy function for compatibility
 def get_client():
     """Legacy function for compatibility. Returns None as we use direct connections now."""
-    return None
+    return
