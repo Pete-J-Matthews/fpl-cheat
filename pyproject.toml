@@ -9,25 +9,28 @@ dependencies = [
     "requests>=2.31.0",
     "psycopg2-binary>=2.9.0",
     "apscheduler>=3.10.0",
-    "pytz>=2023.3",
     "boto3>=1.34",
 ]
 
 [project.optional-dependencies]
 dev = [
+    "pre-commit>=4.6.2",
     "pytest>=7.0.0",
-    "black>=23.0.0",
-    "flake8>=6.0.0",
+    "ruff>=0.16.4",
 ]
-
 
 [tool.uv]
 package = false
 
-[tool.black]
+[tool.ruff]
 line-length = 88
-target-version = ['py39']
+target-version = "py311"
 
-[tool.flake8]
-max-line-length = 88
-extend-ignore = ["E203", "W503"]
+[tool.ruff.lint]
+# Ruff's default rule set, minus the ones this codebase contradicts by design.
+ignore = [
+    "E501",    # ruff format can't split long strings; 116 would remain
+    "BLE001",  # broad excepts are the deliberate degrade-don't-crash pattern
+    "S110",    # ditto: except-pass is intentional on optional data
+    "S112",    # ditto: except-continue skips a bad page rather than aborting
+]

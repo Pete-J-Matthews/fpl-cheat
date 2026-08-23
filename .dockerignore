@@ -16,10 +16,8 @@ venv/
 .git/
 .gitignore
 .github/
-.vscode/
 .cursor/
 .claude/
-mise.toml
 
 # Python build noise
 __pycache__/
@@ -39,12 +37,10 @@ __pycache__/
 # but nothing in deploy/ belongs inside the image.
 deploy/
 .dockerignore
-compose.yaml
+.pre-commit-config.yaml
 
-# Platform config. Railway reads these from the *repo*, not from the image,
-# so excluding them here is safe and keeps the image free of dead files.
-Procfile
-runtime.txt
+# Platform config. Railway reads this from the *repo*, not from the image,
+# so excluding it here is safe and keeps the image free of dead files.
 railway.toml
 
 # Docs and tests. `--no-dev` means pytest isn't installed in the image, so

@@ -66,9 +66,9 @@ one temporarily, `railway tcp-proxy create --port 5432 -s fpl-cheat-db` adds it 
 
 ## Troubleshooting
 
-**"Failed to fetch picks" / "No picks found"**: Enter manager ID directly, then verify the ID exists for the current gameweek  
-**"Database credentials missing / connection failed"**: Verify `DATABASE_URL` is set and PostgreSQL is attached in Railway. From a laptop this error is expected — the database is private and `postgres.railway.internal` only resolves inside Railway  
-**"No creator teams available for gameweek X"**: Run `scripts/update_creator_teams_cron.py` or wait for the scheduled 5pm/midnight UK update while the app is running  
+**"Failed to fetch picks" / "No picks found"**: Enter manager ID directly, then verify the ID exists for the current gameweek
+**"Database credentials missing / connection failed"**: Verify `DATABASE_URL` is set and PostgreSQL is attached in Railway. From a laptop this error is expected — the database is private and `postgres.railway.internal` only resolves inside Railway
+**"No creator teams available for gameweek X"**: Run `scripts/update_creator_teams_cron.py` or wait for the scheduled 5pm/midnight UK update while the app is running
 **"No search results / query timeout"**: Use a longer search prefix (4+ chars) or enter manager ID directly
 
 ## License
