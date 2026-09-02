@@ -49,16 +49,17 @@ def test_find_last_page_zero_when_standings_empty(monkeypatch):
 
 
 class FakeDB:
-    def __init__(self):
+    def __init__(self, short_by=0):
         self.rows = {}
-        self.progress = []
+        self.watermarks = []
+        self.short_by = short_by
 
     def upsert_managers(self, managers):
         self.rows.update({m["manager_id"]: m for m in managers})
-        return len(managers)
+        return len(managers) - self.short_by
 
-    def update_progress(self, last_page, count):
-        self.progress.append((last_page, count))
+    def set_last_page(self, last_page):
+        self.watermarks.append(last_page)
 
     def get_manager_count(self):
         return len(self.rows)
@@ -72,7 +73,7 @@ def test_fetch_all_managers_covers_every_page(monkeypatch):
     db = FakeDB()
     total = FPLDataFetcher().fetch_all_managers(1, 25, db, max_workers=4)
     assert total == 25
-    assert [p for p, _ in db.progress] == [10, 20, 25]
+    assert db.watermarks == [10, 20, 25]
 
 
 def test_throttling_halves_workers_and_retries_window(monkeypatch):
@@ -102,7 +103,7 @@ def test_window_mostly_failing_stops_the_fetch(monkeypatch):
     )
     db = FakeDB()
     assert FPLDataFetcher().fetch_all_managers(1, 100, db, max_workers=4) == 0
-    assert db.progress == []
+    assert db.watermarks == []
 
 
 def stub_session(monkeypatch, response):
@@ -144,3 +145,12 @@ def test_find_last_page_raises_rather_than_truncating_on_failure(monkeypatch):
     )
     with pytest.raises(RuntimeError, match="probing for the end"):
         FPLDataFetcher().find_last_page()
+
+
+def test_short_upsert_does_not_advance_the_watermark(monkeypatch):
+    monkeypatch.setattr(fetch_fpl_data, "WINDOW_PAGES", 5)
+    monkeypatch.setattr(FPLDataFetcher, "fetch_page", lambda self, p: page(row(p)))
+    db = FakeDB(short_by=1)
+    with pytest.raises(RuntimeError, match="of 5 managers"):
+        FPLDataFetcher().fetch_all_managers(1, 5, db, max_workers=4)
+    assert db.watermarks == []

@@ -119,17 +119,18 @@ The local database is empty and **has no tables at all** — there are no init s
 fault:
 
 - **Search errors or returns nothing.** `all_managers` does not exist until something creates it.
-  `scripts/fetch_fpl_data.py` creates its own tables on startup, so running it once fixes the schema. Its
-  argument is a *mode*, not an environment: `local` writes to a SQLite file the app never reads, so the
-  Postgres path is `production`. It is slow — it pages the public overall-standings endpoint.
+  `scripts/fetch_fpl_data.py` creates its own tables on startup, so running it once fixes the schema. It
+  takes no environment argument — it writes to whatever `DATABASE_URL` points at, so point it at the local
+  container. `--limit` bounds the run; without it the script pages the whole public overall-standings league
+  (~198,000 pages).
 
   ```bash
   DATABASE_URL="postgresql://fpl:localdev@127.0.0.1:5432/fpl" \
-    uv run python scripts/fetch_fpl_data.py production
+    uv run python scripts/fetch_fpl_data.py --limit 200
   ```
 
-  Note that script shells out to `curl` (`scripts/fetch_fpl_data.py:90`), which is **not** in the image — run
-  it on the host, as above, not inside the container.
+  It uses `requests`, which is in the image, so it runs either on the host or inside the container via
+  `--entrypoint python`.
 
   Also: `search_managers()` needs a 4+ character prefix. Entering a manager ID directly works regardless,
   since picks come from the public FPL API rather than the database.
