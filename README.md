@@ -41,8 +41,8 @@ Because the database is private, one-off scripts run inside the deployed service
 # One-time setup: register your SSH public key with Railway
 railway ssh keys add
 
-# Backfill the manager lookup table (long-running — use a tmux session so it
-# survives a dropped connection)
+# Backfill the manager lookup table (use a tmux session so it survives a
+# dropped connection)
 railway ssh -s fpl-cheat --session fetch
 # then, inside the shell:
 python scripts/fetch_fpl_data.py production
@@ -50,6 +50,24 @@ python scripts/fetch_fpl_data.py production
 # Ad-hoc psql
 railway ssh -s fpl-cheat 'psql "$DATABASE_URL"'
 ```
+
+The fetch pages the standings endpoint concurrently, ramping up to `--max-workers` (default 8) and
+halving whenever the API returns 429/403/503, so it self-limits instead of relying on a fixed delay. It
+binary-searches the last populated page first, then works forward in windows of 2,000 pages, saving progress
+after each — so an interrupted run resumes from the last completed window. A full season is roughly 198,000
+pages.
+
+When raising `--max-workers`, ramp it: `--limit 5000` bounds a trial run so you can watch for throttling
+before committing to the full fetch.
+
+At the start of a new season, reset the watermark or the run resumes past the new pages and does nothing:
+
+```bash
+railway ssh -s fpl-cheat 'psql "$DATABASE_URL" -c "update fetch_progress set last_page=0"'
+```
+
+Use `--reset` only if you also want last season's rows gone — it empties `all_managers`, so search breaks
+until the refetch finishes. Resetting just the watermark lets the upsert refresh rows in place.
 
 Creator teams need no manual step — the in-app APScheduler job updates them on schedule.
 
