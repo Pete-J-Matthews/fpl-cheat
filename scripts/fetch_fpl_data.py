@@ -311,11 +311,13 @@ class DatabaseManager:
         self.connection.commit()
 
     def delete_all_managers(self) -> int:
-        """Delete every row from all_managers, returning how many went."""
+        """Empty all_managers. TRUNCATE frees the pages instead of awaiting vacuum."""
         cursor = self.connection.cursor()
-        cursor.execute("DELETE FROM all_managers")
+        cursor.execute("SELECT COUNT(*) FROM all_managers")
+        deleted = cursor.fetchone()[0]
+        cursor.execute("TRUNCATE TABLE all_managers")
         self.connection.commit()
-        return cursor.rowcount
+        return deleted
 
     def close(self):
         """Close the database connection."""
