@@ -4,29 +4,29 @@ FPL Data Fetcher
 
 Fetches manager data from the Fantasy Premier League API and stores it in the database.
 Supports both local (SQLite) and production (PostgreSQL/Railway) environments.
-Runs continuously until all data is fetched, rate limited, or manually stopped.
-Progress is automatically saved at regular intervals.
+
+Pages are fetched concurrently in windows. Concurrency ramps up to --max-workers and
+halves whenever the API returns a throttling status, so the fetch self-limits rather
+than guessing a safe delay. Progress is saved after every window and is resumable.
 
 Usage:
     python scripts/fetch_fpl_data.py local
     python scripts/fetch_fpl_data.py production
-    python scripts/fetch_fpl_data.py local --test    # Test mode: only fetch first page
-    python scripts/fetch_fpl_data.py local --reset   # Delete all data and start fresh
+    python scripts/fetch_fpl_data.py local --test          # Only fetch one page
+    python scripts/fetch_fpl_data.py local --reset         # Delete all data and start fresh
+    python scripts/fetch_fpl_data.py local --limit 5000    # Bounded run, for ramp testing
 """
 
 import argparse
-import json
 import logging
 import os
-import random
-
-# Database imports
 import sqlite3
-
-# Database imports
-import subprocess
 import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+import requests
 
 try:
     import psycopg2
@@ -35,9 +35,8 @@ except ImportError:
     psycopg2 = None
     execute_values = None
 
-# Configure logging
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[logging.StreamHandler(sys.stdout)],
 )
@@ -48,232 +47,180 @@ FPL_API_BASE = "https://fantasy.premierleague.com/api"
 LEAGUE_ID = 314  # Overall league
 STANDINGS_ENDPOINT = f"/leagues-classic/{LEAGUE_ID}/standings/"
 
-# Rate limiting configuration
-MIN_DELAY = 0.5  # Minimum delay between requests (seconds)
-MAX_DELAY = 1.0  # Maximum delay between requests (seconds)
-MAX_RETRIES = 3  # Maximum number of retries for failed requests
+# An identifiable client is less likely to be blocked than an anonymous one.
+USER_AGENT = os.getenv(
+    "FPL_USER_AGENT", "fpl-cheat/1.0 (personal FPL comparison app; contact via repo)"
+)
 
-# Processing configuration
-PROGRESS_SAVE_INTERVAL = 50  # Save progress every N pages
+# Concurrency: ramps from MIN to MAX, halves on any throttling response.
+MIN_WORKERS = 4
+DEFAULT_MAX_WORKERS = 8
+WINDOW_PAGES = 2000  # Pages per save point
+REQUEST_TIMEOUT = 30
+MAX_RETRIES = 3
+THROTTLE_STATUSES = {403, 429, 503}
+DEFAULT_BACKOFF = 60  # Seconds to wait when throttled without a Retry-After
+
+_local = threading.local()
+
+
+class RateLimited(Exception):
+    """The API asked us to slow down."""
+
+    def __init__(self, page: int, status: int, retry_after: int):
+        super().__init__(f"page {page}: HTTP {status}, retry after {retry_after}s")
+        self.status = status
+        self.retry_after = retry_after
+
+
+def _session() -> requests.Session:
+    """One pooled session per thread, for connection reuse."""
+    if not hasattr(_local, "session"):
+        _local.session = requests.Session()
+        _local.session.headers["User-Agent"] = USER_AGENT
+    return _local.session
+
+
+def _retry_after(response: requests.Response) -> int:
+    """Seconds to wait, taken from Retry-After when the server sends one."""
+    try:
+        return max(1, min(300, int(response.headers.get("Retry-After", ""))))
+    except ValueError:
+        return DEFAULT_BACKOFF
+
+
+def parse_managers(data: dict | None, page: int) -> list[dict]:
+    """Extract manager records from one standings page, skipping invalid rows."""
+    managers = []
+    for result in (data or {}).get("standings", {}).get("results", []):
+        manager_id = result.get("entry")
+        manager_name = result.get("player_name")
+        team_name = result.get("entry_name")
+        if not isinstance(manager_id, int) or isinstance(manager_id, bool):
+            logger.warning(f"Page {page}: bad manager_id {manager_id!r}, skipping")
+            continue
+        if not isinstance(manager_name, str) or not manager_name.strip():
+            logger.warning(f"Page {page}: bad manager_name {manager_name!r}, skipping")
+            continue
+        if not isinstance(team_name, str) or not team_name.strip():
+            logger.warning(f"Page {page}: bad team_name {team_name!r}, skipping")
+            continue
+        managers.append(
+            {
+                "manager_id": manager_id,
+                "manager_name": manager_name,
+                "team_name": team_name,
+            }
+        )
+    return managers
 
 
 class FPLDataFetcher:
-    """Handles fetching data from the FPL API with rate limiting and error handling."""
-
-    def __init__(self):
-        self.total_managers = 0
-        self.processed_managers = 0
-
-    def _random_delay(self):
-        """Add a random delay to avoid rate limiting."""
-        delay = random.uniform(MIN_DELAY, MAX_DELAY)
-        logger.debug(f"Waiting {delay:.2f} seconds before next request...")
-        time.sleep(delay)
-
-    def fetch_page_curl(self, page: int) -> dict | None:
-        """Fetch a single page using curl with retry logic."""
-        url = f"{FPL_API_BASE}{STANDINGS_ENDPOINT}?page_standings={page}"
-
-        for attempt in range(MAX_RETRIES):
-            try:
-                if attempt > 0:
-                    logger.info(f"Retry attempt {attempt + 1} for page {page}...")
-                    # Exponential backoff
-                    time.sleep(2**attempt)
-
-                logger.info(f"Fetching page {page} using curl...")
-
-                # Use curl to fetch the data
-                result = subprocess.run(
-                    ["curl", "-s", "--max-time", "30", url],
-                    capture_output=True,
-                    text=True,
-                    timeout=35,
-                    check=False,
-                )
-
-                if result.returncode != 0:
-                    logger.error(f"Curl failed with return code {result.returncode}")
-                    logger.error(f"Curl stderr: {result.stderr}")
-                    if attempt == MAX_RETRIES - 1:
-                        return None
-                    continue
-
-                if not result.stdout:
-                    logger.error(f"Empty response for page {page}")
-                    if attempt == MAX_RETRIES - 1:
-                        return None
-                    continue
-
-                # Try to parse as JSON
-                data = json.loads(result.stdout)
-                logger.debug(f"Successfully fetched page {page} using curl")
-                return data
-
-            except subprocess.TimeoutExpired:
-                logger.error(f"Curl timeout for page {page} (attempt {attempt + 1})")
-                if attempt == MAX_RETRIES - 1:
-                    return None
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse JSON for page {page}: {e}")
-                logger.error(
-                    f"Response content (first 200 chars): {result.stdout[:200]}"
-                )
-                if attempt == MAX_RETRIES - 1:
-                    return None
-            except Exception as e:
-                logger.error(f"Unexpected error fetching page {page}: {e}")
-                if attempt == MAX_RETRIES - 1:
-                    return None
-
-        return None
+    """Fetches standings pages concurrently, backing off when throttled."""
 
     def fetch_page(self, page: int) -> dict | None:
-        """Fetch a single page of standings data."""
-        # Try curl method first since requests seems to be blocked
-        return self.fetch_page_curl(page)
+        """Fetch one page. Returns None if it failed; raises RateLimited if throttled."""
+        url = f"{FPL_API_BASE}{STANDINGS_ENDPOINT}?page_standings={page}"
+        for attempt in range(MAX_RETRIES):
+            if attempt:
+                time.sleep(2**attempt)
+            try:
+                response = _session().get(url, timeout=REQUEST_TIMEOUT)
+            except requests.RequestException as exc:
+                logger.error(f"Page {page} attempt {attempt + 1} failed: {exc}")
+                continue
+            if response.status_code in THROTTLE_STATUSES:
+                raise RateLimited(page, response.status_code, _retry_after(response))
+            if response.status_code != 200:
+                logger.error(f"Page {page} returned HTTP {response.status_code}")
+                continue
+            try:
+                return response.json()
+            except ValueError as exc:
+                logger.error(f"Page {page} returned non-JSON: {exc}")
+        return None
+
+    def _has_rows(self, page: int) -> bool:
+        """Whether a page holds rows. Raises rather than read a failure as the end."""
+        data = self.fetch_page(page)
+        if data is None:
+            raise RuntimeError(f"Could not fetch page {page} while probing for the end")
+        return bool(data.get("standings", {}).get("results", []))
+
+    def find_last_page(self) -> int:
+        """Binary search the deepest page that still returns rows."""
+        if not self._has_rows(1):
+            return 0
+        low, high = 1, 1024
+        while self._has_rows(high):
+            low, high = high, high * 2
+        while low + 1 < high:
+            mid = (low + high) // 2
+            if self._has_rows(mid):
+                low = mid
+            else:
+                high = mid
+        return low
+
+    def fetch_window(self, pages: list[int], workers: int) -> dict[int, dict | None]:
+        """Fetch pages concurrently, cancelling the rest if we get throttled."""
+        results: dict[int, dict | None] = {}
+        executor = ThreadPoolExecutor(max_workers=workers)
+        futures = {executor.submit(self.fetch_page, page): page for page in pages}
+        try:
+            for future in as_completed(futures):
+                results[futures[future]] = future.result()
+            return results
+        except RateLimited:
+            executor.shutdown(wait=False, cancel_futures=True)
+            raise
+        finally:
+            executor.shutdown(wait=True)
 
     def fetch_all_managers(
-        self, start_page: int, db_manager=None
-    ) -> tuple[list[dict], int, bool]:
-        """
-        Fetch all available managers starting from a specific page.
-        Continues until no more pages are available or rate limited.
-
-        Args:
-            start_page: Page number to start from
-            db_manager: Database manager for progress updates (optional)
-
-        Returns:
-            Tuple of (managers_list, last_page_processed, has_more_pages)
-        """
-        all_managers = []
+        self, start_page: int, last_page: int, db_manager, max_workers: int
+    ) -> int:
+        """Fetch start_page..last_page in windows, saving progress after each."""
+        workers = min(MIN_WORKERS, max_workers)
         page = start_page
-        has_more_pages = True
-        consecutive_failures = 0
-        max_consecutive_failures = 5  # Stop after 5 consecutive failures
-
-        logger.info(f"Starting continuous fetch from page {start_page}...")
-        logger.info(f"Will save progress every {PROGRESS_SAVE_INTERVAL} pages")
-
-        while has_more_pages and consecutive_failures < max_consecutive_failures:
-            # Add random delay before each request
-            if page > start_page:
-                self._random_delay()
-
-            data = self.fetch_page(page)
-            if not data:
-                consecutive_failures += 1
-                logger.error(
-                    f"Failed to fetch page {page} (failure #{consecutive_failures}/{max_consecutive_failures})"
+        while page <= last_page:
+            window = list(range(page, min(page + WINDOW_PAGES, last_page + 1)))
+            started = time.time()
+            try:
+                results = self.fetch_window(window, workers)
+            except RateLimited as exc:
+                workers = max(1, workers // 2)
+                logger.warning(
+                    f"Throttled (HTTP {exc.status}): sleeping {exc.retry_after}s, "
+                    f"dropping to {workers} workers"
                 )
-
-                if consecutive_failures >= max_consecutive_failures:
-                    logger.error(
-                        f"Too many consecutive failures ({consecutive_failures}), stopping..."
-                    )
-                    break
+                time.sleep(exc.retry_after)
                 continue
 
-            # Reset failure counter on successful fetch
-            consecutive_failures = 0
-
-            standings = data.get("standings", {})
-            results = standings.get("results", [])
-
-            if not results:
-                logger.info(f"No more results on page {page}, fetch complete...")
-                has_more_pages = False
+            failed = [p for p in window if results.get(p) is None]
+            if len(failed) > len(window) // 2:
+                logger.error(
+                    f"{len(failed)}/{len(window)} pages failed from {window[0]}, stopping"
+                )
                 break
+            if failed:
+                logger.warning(
+                    f"{len(failed)} pages failed and were skipped: {failed[:10]}"
+                )
 
-            # Extract only the required fields with strict validation
-            page_managers = []
-            for result in results:
-                # Extract raw values
-                manager_id = result.get("entry")
-                manager_name = result.get("player_name")
-                team_name = result.get("entry_name")
-
-                # Validate all fields are present and correct type
-                # If ANY field fails validation, skip the entire row
-                validation_errors = []
-
-                # Check manager_id: must be integer, not None
-                if manager_id is None:
-                    validation_errors.append("manager_id is None")
-                elif not isinstance(manager_id, int):
-                    validation_errors.append(
-                        f"manager_id is not int (got {type(manager_id).__name__})"
-                    )
-
-                # Check manager_name: must be non-empty string, not None
-                if manager_name is None:
-                    validation_errors.append("manager_name is None")
-                elif not isinstance(manager_name, str):
-                    validation_errors.append(
-                        f"manager_name is not str (got {type(manager_name).__name__})"
-                    )
-                elif not manager_name.strip():
-                    validation_errors.append("manager_name is empty string")
-
-                # Check team_name: must be non-empty string, not None
-                if team_name is None:
-                    validation_errors.append("team_name is None")
-                elif not isinstance(team_name, str):
-                    validation_errors.append(
-                        f"team_name is not str (got {type(team_name).__name__})"
-                    )
-                elif not team_name.strip():
-                    validation_errors.append("team_name is empty string")
-
-                # If any validation failed, skip this row
-                if validation_errors:
-                    logger.warning(
-                        f"Skipping invalid record on page {page}: {', '.join(validation_errors)}. Raw data: entry={manager_id}, name={manager_name}, team={team_name}"
-                    )
-                    continue
-
-                # All validations passed, create manager_data dict
-                manager_data = {
-                    "manager_id": manager_id,
-                    "manager_name": manager_name,
-                    "team_name": team_name,
-                }
-                page_managers.append(manager_data)
-
-            all_managers.extend(page_managers)
-            self.processed_managers += len(page_managers)
-
+            managers = [m for p in window for m in parse_managers(results[p], p)]
+            db_manager.upsert_managers(managers)
+            db_manager.update_progress(window[-1], len(managers))
+            elapsed = time.time() - started
             logger.info(
-                f"Fetched page {page}: {len(page_managers)} managers (Total: {len(all_managers)})"
+                f"Pages {window[0]}-{window[-1]}: {len(managers):,} managers in "
+                f"{elapsed:.1f}s ({len(window) / elapsed:.0f} pages/s, {workers} workers)"
             )
 
-            # Save progress at regular intervals to prevent data loss
-            if db_manager and page % PROGRESS_SAVE_INTERVAL == 0:
-                logger.info(f"💾 Saving progress at page {page}...")
-                inserted = db_manager.upsert_managers(all_managers)
-                db_manager.update_progress(page, len(all_managers))
-                logger.info(f"✅ Progress saved: {inserted:,} managers in database")
-                # Clear the list to free memory, but keep track of total
-                all_managers = []
-
-            # Check if there are more pages
-            if not standings.get("has_next", False):
-                logger.info("No more pages available")
-                has_more_pages = False
-                break
-
-            page += 1
-
-        # Save any remaining managers
-        if all_managers and db_manager:
-            logger.info(f"💾 Saving final batch of {len(all_managers)} managers...")
-            inserted = db_manager.upsert_managers(all_managers)
-            db_manager.update_progress(page, len(all_managers))
-            logger.info(f"✅ Final progress saved: {inserted:,} managers in database")
-
-        logger.info(f"Fetch complete. Processed pages {start_page}-{page}")
-        return all_managers, page, has_more_pages
+            page = window[-1] + 1
+            if workers < max_workers:
+                workers += 1
+        return db_manager.get_manager_count()
 
 
 class DatabaseManager:
@@ -517,147 +464,87 @@ def main():
         help="Database environment to use",
     )
     parser.add_argument(
-        "--test", action="store_true", help="Test mode: only fetch first page"
+        "--test", action="store_true", help="Test mode: only fetch one page"
     )
     parser.add_argument(
         "--reset",
         action="store_true",
         help="Delete all rows from all_managers table and reset progress before fetching",
     )
+    parser.add_argument(
+        "--max-workers",
+        type=int,
+        default=DEFAULT_MAX_WORKERS,
+        help=f"Concurrency ceiling (default {DEFAULT_MAX_WORKERS})",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        help="Stop after this many pages, for ramp testing",
+    )
 
     args = parser.parse_args()
-
     logger.info(f"Starting FPL data fetch for {args.environment} environment")
 
     try:
-        # Initialize database
         db_manager = DatabaseManager(args.environment)
 
-        # Handle reset flag
         if args.reset:
-            logger.warning(
-                "⚠️  RESET MODE: Deleting all rows from all_managers table..."
-            )
+            logger.warning("RESET MODE: deleting all rows from all_managers...")
             deleted_count = db_manager.delete_all_managers()
-            logger.info(f"✅ Deleted {deleted_count} rows from all_managers table")
             db_manager.reset_progress()
-            logger.info("✅ Reset fetch progress to initial state")
-            logger.info("🔄 Starting fresh fetch from page 1")
+            logger.info(f"Deleted {deleted_count} rows and reset progress")
 
-        initial_count = db_manager.get_manager_count()
-        logger.info(f"Initial manager count: {initial_count}")
-
-        # Get progress state (start from page 1 if reset was used)
+        logger.info(f"Initial manager count: {db_manager.get_manager_count():,}")
         progress = db_manager.get_progress()
-        start_page = (
-            1
-            if args.reset
-            else (progress["last_page"] + 1 if progress["last_page"] > 0 else 1)
-        )
-
-        logger.info(f"Resuming from page {start_page}")
-        logger.info(
-            f"Previous progress: {progress['total_managers_fetched']} managers fetched"
-        )
-
-        # Initialize fetcher
+        start_page = 1 if args.reset else max(1, progress["last_page"] + 1)
         fetcher = FPLDataFetcher()
 
         if args.test:
-            logger.info(f"TEST MODE: Fetching page {start_page} (resume page)")
-            data = fetcher.fetch_page(start_page)
-            if data:
-                standings = data.get("standings", {})
-                results = standings.get("results", [])
-                managers = []
-                for result in results[:5]:  # Only take first 5 for testing
-                    # Extract raw values
-                    manager_id = result.get("entry")
-                    manager_name = result.get("player_name")
-                    team_name = result.get("entry_name")
-
-                    # Validate all fields (same strict validation as main fetch)
-                    if (
-                        manager_id is not None
-                        and isinstance(manager_id, int)
-                        and manager_name is not None
-                        and isinstance(manager_name, str)
-                        and manager_name.strip()
-                        and team_name is not None
-                        and isinstance(team_name, str)
-                        and team_name.strip()
-                    ):
-                        manager_data = {
-                            "manager_id": manager_id,
-                            "manager_name": manager_name,
-                            "team_name": team_name,
-                        }
-                        managers.append(manager_data)
-                    else:
-                        logger.warning(
-                            f"Test mode: Skipping invalid record: entry={manager_id}, name={manager_name}, team={team_name}"
-                        )
-
-                logger.info(f"Test mode: Found {len(managers)} managers in first page")
-                if managers:
-                    inserted = db_manager.upsert_managers(managers)
-                    logger.info(f"Test mode: Inserted {inserted} managers")
-            else:
-                logger.error("Test mode: Failed to fetch first page")
-        else:
-            # Continuous fetch mode
-            logger.info(f"\n🚀 Starting continuous fetch from page {start_page}")
+            managers = parse_managers(fetcher.fetch_page(start_page), start_page)[:5]
             logger.info(
-                "📊 Will fetch all available managers until completion or rate limit"
+                f"Test mode: found {len(managers)} managers on page {start_page}"
             )
-
-            # Record start time
-            start_time = time.strftime("%Y-%m-%d %H:%M:%S")
-
-            # Fetch all managers
-            managers, last_page, has_more_pages = fetcher.fetch_all_managers(
-                start_page, db_manager
-            )
-
-            # Record end time
-            end_time = time.strftime("%Y-%m-%d %H:%M:%S")
-
-            # Update final progress
-            db_manager.update_progress(last_page, len(managers), start_time, end_time)
-
-            final_count = db_manager.get_manager_count()
-            logger.info(f"📈 Total managers in database: {final_count:,}")
-
-            if has_more_pages:
+            if managers:
                 logger.info(
-                    "🎉 Fetch completed due to rate limiting or consecutive failures"
+                    f"Test mode: inserted {db_manager.upsert_managers(managers)}"
                 )
-            else:
-                logger.info("🎉 All pages processed! Data fetch complete.")
+            db_manager.close()
+            return
 
+        last_page = fetcher.find_last_page()
+        if args.limit:
+            last_page = min(last_page, start_page + args.limit - 1)
+        logger.info(
+            f"Fetching pages {start_page}-{last_page:,} (max {args.max_workers} workers)"
+        )
+
+        if start_page > last_page:
+            logger.info("Nothing to fetch. Reset last_page to refetch from the start.")
+            db_manager.close()
+            return
+
+        start_time = time.strftime("%Y-%m-%d %H:%M:%S")
+        total = fetcher.fetch_all_managers(
+            start_page, last_page, db_manager, args.max_workers
+        )
+        db_manager.update_progress(
+            db_manager.get_progress()["last_page"],
+            0,
+            start_time,
+            time.strftime("%Y-%m-%d %H:%M:%S"),
+        )
+        logger.info(f"Total managers in database: {total:,}")
         db_manager.close()
-        logger.info("✅ FPL data fetch completed successfully")
+        logger.info("FPL data fetch completed successfully")
 
     except KeyboardInterrupt:
-        logger.info("⏹️  Process interrupted by user. Saving progress...")
-        try:
-            # Try to save any remaining progress
-            if "db_manager" in locals():
-                progress = db_manager.get_progress()
-                logger.info(
-                    f"💾 Final progress saved: {progress['total_managers_fetched']} managers"
-                )
-                db_manager.close()
-        except Exception as e:
-            logger.error(f"Failed to save progress on interrupt: {e}")
-        logger.info("👋 Process stopped by user. Progress has been saved.")
+        logger.info("Interrupted. Progress was saved after the last completed window.")
         sys.exit(0)
-    except Exception as e:
-        logger.error(f"💥 Fatal error: {e}")
+    except Exception as exc:
+        logger.error(f"Fatal error: {exc}")
         sys.exit(1)
 
 
 if __name__ == "__main__":
-    import os
-
     main()
