@@ -31,7 +31,7 @@ This means database work cannot be run from a laptop against production — it h
 (see [Running data loads](#running-data-loads) below).
 
 ## Database
-The manager lookup database (`all_managers`) is populated from the public FPL overall league standings endpoint using `scripts/fetch_fpl_data.py`. This stores manager name, team name, and manager ID for search. Creator comparison squads are stored separately in `creator_teams` (player_1 to player_15 plus current gameweek).
+The manager lookup database (`all_managers`) is populated from the public FPL overall league standings endpoint using `scripts/fetch_fpl_data.py`, which writes to whatever Postgres `DATABASE_URL` points at. This stores manager name, team name, and manager ID for search. Creator comparison squads are stored separately in `creator_teams` (player_1 to player_15 plus current gameweek).
 
 ### Running data loads
 
@@ -45,7 +45,7 @@ railway ssh keys add
 # dropped connection)
 railway ssh -s fpl-cheat --session fetch
 # then, inside the shell:
-python scripts/fetch_fpl_data.py production
+python scripts/fetch_fpl_data.py
 
 # Ad-hoc psql
 railway ssh -s fpl-cheat 'psql "$DATABASE_URL"'
