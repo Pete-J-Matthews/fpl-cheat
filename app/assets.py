@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 FAVICON_KEY = "favicon.svg"
 JERSEY_KEY = "jerseys/{short}.png"
+JERSEY_GK_KEY = "jerseys/{short}_GK.png"
 
 
 class AssetUnavailable(RuntimeError):
@@ -22,27 +23,21 @@ def _bucket() -> str | None:
 
 @st.cache_resource(show_spinner=False)
 def _client():
-    """Shared S3 client, or None when the bucket isn't configured."""
-    endpoint = os.getenv("AWS_ENDPOINT_URL")
-    if not all(
-        (
-            os.getenv("AWS_ACCESS_KEY_ID"),
-            os.getenv("AWS_SECRET_ACCESS_KEY"),
-            endpoint,
-            _bucket(),
-        )
-    ):
+    """Shared S3 client, or None when the bucket isn't configured.
+
+    Endpoint, region and credentials come from boto3's own env resolution, so a missing
+    one surfaces as a failed get_object and degrades to a placeholder like any other
+    fetch failure.
+    """
+    if not _bucket():
         logger.warning("Asset bucket not configured; falling back to placeholders.")
         return None
 
     import boto3  # lazy: skips botocore's import cost when unconfigured
     from botocore.config import Config
 
-    # Credentials come from boto3's own env provider, so they never enter a traceback here.
     return boto3.client(
         "s3",
-        endpoint_url=endpoint,
-        region_name=os.getenv("AWS_DEFAULT_REGION"),
         config=Config(
             signature_version="s3v4",
             connect_timeout=3,
@@ -74,11 +69,12 @@ def get_favicon_data_uri() -> str | None:
         return None
 
 
-def get_jersey_b64(team_short: str | None) -> str | None:
+def get_jersey_b64(team_short: str | None, is_keeper: bool = False) -> str | None:
     """Base64 PNG for a club's jersey by 3-letter short code, or None."""
     if not team_short:
         return None
+    template = JERSEY_GK_KEY if is_keeper else JERSEY_KEY
     try:
-        return _object_b64(JERSEY_KEY.format(short=str(team_short).upper()))
+        return _object_b64(template.format(short=str(team_short).upper()))
     except AssetUnavailable:
         return None

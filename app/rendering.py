@@ -50,7 +50,7 @@ def _render_player_card(
     team_short: str | None = None,
 ):
     """Render a single player card with jersey image."""
-    b64 = get_jersey_b64(team_short)
+    b64 = get_jersey_b64(team_short, position == "GKP")
     if b64:
         col.markdown(
             f"""
@@ -114,7 +114,7 @@ def _player_card_html(
     common_player_ids: set[int] | None,
 ) -> str:
     """Return HTML for one player card (for use in pitch_as_html). Name on first row; position and captaincy on second for equal-sized pills."""
-    b64 = get_jersey_b64(team_short)
+    b64 = get_jersey_b64(team_short, position == "GKP")
     img_html = (
         f'<img src="data:image/png;base64,{b64}" alt="{name}" />'
         if b64
