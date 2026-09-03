@@ -248,11 +248,15 @@ class DatabaseManager:
                 team_name TEXT NOT NULL
             )
         """)
+        # GIN trigram: a plain btree cannot serve ILIKE at all.
+        cursor.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
         cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_all_managers_team_name ON all_managers(team_name)"
+            "CREATE INDEX IF NOT EXISTS idx_all_managers_manager_name_trgm "
+            "ON all_managers USING gin (manager_name gin_trgm_ops)"
         )
         cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_all_managers_manager_name ON all_managers(manager_name)"
+            "CREATE INDEX IF NOT EXISTS idx_all_managers_team_name_trgm "
+            "ON all_managers USING gin (team_name gin_trgm_ops)"
         )
         # Deployed databases carry extra unused columns here; they are left alone.
         cursor.execute("""

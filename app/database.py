@@ -145,10 +145,11 @@ def search_managers(query: str) -> list[dict]:
     if len(q) < 4:
         return []
 
+    # No DISTINCT: manager_id is the PK, and it would block the LIMIT from stopping early.
     pattern = f"{q}%"
     return _execute_query(
         """
-        SELECT DISTINCT manager_id, manager_name, team_name
+        SELECT manager_id, manager_name, team_name
         FROM all_managers
         WHERE manager_name ILIKE %s OR team_name ILIKE %s
         LIMIT 50
