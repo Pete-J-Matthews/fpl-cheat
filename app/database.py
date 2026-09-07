@@ -4,6 +4,7 @@ Uses Railway PostgreSQL database via DATABASE_URL from environment variable.
 """
 
 import os
+import re
 from collections.abc import Callable
 from contextlib import contextmanager
 from typing import Any, TypeVar
@@ -140,18 +141,19 @@ def _handle_st_debug(operation: str, default_return: Any = None):
 
 
 def search_managers(query: str) -> list[dict]:
-    """Search `all_managers` by manager_name or team_name using case-insensitive prefix ILIKE."""
+    """Search `all_managers` by manager_name or team_name using case-insensitive prefix match."""
     q = query.strip()
     if len(q) < 4:
         return []
 
+    # Escaped so a literal % or _ cannot widen the prefix into a full-table scan.
+    pattern = re.sub(r"([\\%_])", r"\\\1", q.lower()) + "%"
     # No DISTINCT: manager_id is the PK, and it would block the LIMIT from stopping early.
-    pattern = f"{q}%"
     return _execute_query(
         """
         SELECT manager_id, manager_name, team_name
         FROM all_managers
-        WHERE manager_name ILIKE %s OR team_name ILIKE %s
+        WHERE lower(manager_name) LIKE %s OR lower(team_name) LIKE %s
         LIMIT 50
         """,
         params=(pattern, pattern),

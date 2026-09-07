@@ -23,11 +23,17 @@ def test_search_managers_ignores_short_queries(captured):
 
 def test_search_managers_anchors_the_prefix(captured):
     database.search_managers("  Pete  ")
-    assert captured["params"] == ("Pete%", "Pete%")
+    assert captured["params"] == ("pete%", "pete%")
 
 
-def test_search_managers_stays_distinct_free(captured):
+def test_search_managers_escapes_like_wildcards(captured):
+    database.search_managers("50%_a")
+    assert captured["params"] == ("50\\%\\_a%", "50\\%\\_a%")
+
+
+def test_search_managers_matches_the_indexed_expression(captured):
     database.search_managers("pete")
     # DISTINCT blocks the LIMIT from stopping early: 47ms becomes 312ms on a common prefix.
     assert "DISTINCT" not in captured["query"].upper()
-    assert captured["query"].upper().count("ILIKE") == 2
+    assert captured["query"].count("lower(manager_name) LIKE") == 1
+    assert captured["query"].count("lower(team_name) LIKE") == 1

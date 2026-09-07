@@ -248,16 +248,13 @@ class DatabaseManager:
                 team_name TEXT NOT NULL
             )
         """)
-        # GIN trigram: a plain btree cannot serve ILIKE at all.
-        cursor.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_all_managers_manager_name_trgm "
-            "ON all_managers USING gin (manager_name gin_trgm_ops)"
-        )
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_all_managers_team_name_trgm "
-            "ON all_managers USING gin (team_name gin_trgm_ops)"
-        )
+        # text_pattern_ops: the en_US collation cannot serve LIKE 'x%' from a plain btree.
+        for col in ("manager_name", "team_name"):
+            cursor.execute(
+                f"CREATE INDEX IF NOT EXISTS idx_all_managers_{col}_prefix "
+                f"ON all_managers (lower({col}) text_pattern_ops)"
+            )
+            cursor.execute(f"DROP INDEX IF EXISTS idx_all_managers_{col}_trgm")
         # Deployed databases carry extra unused columns here; they are left alone.
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS fetch_progress (
@@ -294,10 +291,11 @@ class DatabaseManager:
         return len(values)
 
     def get_manager_count(self) -> int:
-        """Number of managers currently stored."""
+        """Approximate number of managers stored. Log-only, so no COUNT(*) full scan."""
         cursor = self.connection.cursor()
-        cursor.execute("SELECT COUNT(*) FROM all_managers")
-        return cursor.fetchone()[0]
+        cursor.execute("SELECT reltuples FROM pg_class WHERE relname = 'all_managers'")
+        row = cursor.fetchone()
+        return max(0, int(row[0])) if row else 0
 
     def get_last_page(self) -> int:
         """The last fully fetched page. Raises rather than reporting a false zero."""
@@ -316,9 +314,8 @@ class DatabaseManager:
 
     def delete_all_managers(self) -> int:
         """Empty all_managers. TRUNCATE frees the pages instead of awaiting vacuum."""
+        deleted = self.get_manager_count()
         cursor = self.connection.cursor()
-        cursor.execute("SELECT COUNT(*) FROM all_managers")
-        deleted = cursor.fetchone()[0]
         cursor.execute("TRUNCATE TABLE all_managers")
         self.connection.commit()
         return deleted
