@@ -46,4 +46,5 @@ railway.toml
 # Docs and tests. `--no-dev` means pytest isn't installed in the image, so
 # the tests could not run there anyway.
 README.md
+docs/
 tests/
