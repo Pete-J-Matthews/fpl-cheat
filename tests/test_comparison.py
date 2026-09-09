@@ -91,3 +91,43 @@ def test_find_top_similar_teams_sorts_and_limits():
     assert top[1][0]["manager_name"] == "team3"
     # team3: {2,3} vs {1,2,3} => common=2, max_team_size=3 => 66.7
     assert top[1][1] == 66.7
+
+
+def test_creator_team_to_picks_maps_slots_captaincy_and_bench():
+    # rendering.creator_team_to_picks and comparison.parse_creator_team_players now share
+    # iter_creator_players, so this locks the pick fields the shared parse feeds the pitch.
+    from app import rendering
+
+    element_lookup = {10: {"name": "Salah"}, 11: {"name": "Raya"}, 12: {"name": "Kane"}}
+    creator_team = {
+        "player_1": "Raya (GKP)",
+        "player_2": "Salah (MID) (C)",
+        "player_3": "Nobody Known (FWD)",  # unmatched names are skipped, not guessed
+        "player_12": "Kane (FWD) (VC)",
+    }
+
+    picks = rendering.creator_team_to_picks(creator_team, element_lookup)
+
+    assert picks == [
+        {
+            "element": 11,
+            "position": 1,
+            "multiplier": 1,
+            "is_captain": False,
+            "is_vice_captain": False,
+        },
+        {
+            "element": 10,
+            "position": 2,
+            "multiplier": 1,
+            "is_captain": True,
+            "is_vice_captain": False,
+        },
+        {
+            "element": 12,
+            "position": 12,
+            "multiplier": 0,  # bench
+            "is_captain": False,
+            "is_vice_captain": True,
+        },
+    ]

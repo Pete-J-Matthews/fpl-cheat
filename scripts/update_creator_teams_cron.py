@@ -5,6 +5,7 @@ This script runs independently without Streamlit and logs to stdout/stderr.
 """
 
 import sys
+import traceback
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -13,50 +14,34 @@ from app.update_creator_teams import update_all_creator_teams
 UK = ZoneInfo("Europe/London")
 
 
-def log_progress(message: str):
-    """Log progress messages to stdout with timestamp."""
-    timestamp = datetime.now(UK).strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{timestamp}] {message}", flush=True)
+def log(message: str, stream=sys.stdout) -> None:
+    """Log a timestamped message. Errors go to stderr so the cron host can split them."""
+    print(f"[{datetime.now(UK):%Y-%m-%d %H:%M:%S}] {message}", file=stream, flush=True)
 
 
-def log_error(message: str):
-    """Log error messages to stderr with timestamp."""
-    timestamp = datetime.now(UK).strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{timestamp}] ERROR: {message}", file=sys.stderr, flush=True)
-
-
-def main():
-    """Main function to update creator teams."""
-    log_progress("Starting creator teams update...")
-
+def main() -> int:
+    """Update creator teams. Exits non-zero only when nothing at all was updated."""
+    log("Starting creator teams update...")
     try:
-        results = update_all_creator_teams(progress_callback=log_progress)
+        results = update_all_creator_teams(progress_callback=log)
+    except Exception as exc:
+        log(f"ERROR: Fatal error during update: {exc}", sys.stderr)
+        log(f"ERROR: {traceback.format_exc()}", sys.stderr)
+        return 1
 
-        if results.get("already_up_to_date", False):
-            log_progress("Teams are already up to date")
-            return 0
-
-        success = results.get("success", 0)
-        failed = results.get("failed", 0)
-        total = results.get("total", 0)
-
-        log_progress(f"Update complete: {success}/{total} successful, {failed} failed")
-
-        if failed > 0:
-            log_error(f"Failed to update {failed} team(s)")
-            # Still return 0 if at least some teams were updated
-            # Return 1 only if all teams failed
-            return 1 if success == 0 else 0
-
-        log_progress("All teams updated successfully")
+    if results["already_up_to_date"]:
+        log("Teams are already up to date")
         return 0
 
-    except Exception as e:
-        log_error(f"Fatal error during update: {e}")
-        import traceback
+    success, failed, total = results["success"], results["failed"], results["total"]
+    log(f"Update complete: {success}/{total} successful, {failed} failed")
+    if not failed:
+        log("All teams updated successfully")
+        return 0
 
-        log_error(traceback.format_exc())
-        return 1
+    log(f"ERROR: Failed to update {failed} team(s)", sys.stderr)
+    # A partial success is still progress; only a total failure is worth a non-zero exit.
+    return 1 if success == 0 else 0
 
 
 if __name__ == "__main__":

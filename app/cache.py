@@ -1,13 +1,10 @@
-"""
-Cached data fetching functions for the FPL Cheat app.
-"""
+"""Cached data fetching functions for the FPL Cheat app."""
 
-import requests
 import streamlit as st
 
 from app.database import get_creator_teams
 from app.fpl_api import (
-    FPL_FIXTURES_URL,
+    build_element_lookup,
     fetch_bootstrap,
     fetch_entry_picks,
     get_current_event_id,
@@ -39,18 +36,6 @@ def fetch_bootstrap_cached() -> dict | None:
 
 
 @st.cache_data(ttl=300)
-def fetch_fixtures(event_id: int) -> list[dict]:
-    """Fetch fixtures for a specific gameweek."""
-    try:
-        r = requests.get(FPL_FIXTURES_URL, params={"event": event_id}, timeout=10)
-        r.raise_for_status()
-        return r.json() or []
-    except Exception as e:
-        st.warning(f"Failed to fetch fixtures for GW {event_id}: {e}")
-        return []
-
-
-@st.cache_data(ttl=300)
 def get_creator_teams_cached() -> list:
     """Cached wrapper for get_creator_teams."""
     return get_creator_teams()
@@ -63,13 +48,9 @@ def build_lookups(
     element_lookup[element_id] -> {name, position, team_id}
     team_lookup[team_id] -> {short_name, code}
     """
-    from app.fpl_api import build_element_lookup
-
     element_lookup = build_element_lookup(bootstrap, include_team_id=True)
     team_lookup: dict[int, dict[str, str]] = {}
-    teams = bootstrap.get("teams") or []
-
-    for t in teams:
+    for t in bootstrap.get("teams") or []:
         try:
             team_lookup[int(t["id"])] = {
                 "short_name": str(t.get("short_name", "")),
@@ -77,5 +58,4 @@ def build_lookups(
             }
         except Exception:
             continue
-
     return element_lookup, team_lookup

@@ -3,29 +3,25 @@ PostgreSQL database helpers for searching FPL managers in production DB.
 Uses Railway PostgreSQL database via DATABASE_URL from environment variable.
 """
 
+import logging
 import os
 import re
 from collections.abc import Callable
 from contextlib import contextmanager
-from typing import Any, TypeVar
+from typing import Any
 
+import psycopg2
 import streamlit as st
+from psycopg2.extras import RealDictCursor
 
-try:
-    import psycopg2
-    from psycopg2.extras import RealDictCursor
-except ImportError:
-    psycopg2 = None
-    RealDictCursor = None
-
-T = TypeVar("T")
+logger = logging.getLogger(__name__)
 
 
 class DatabaseTimeoutError(Exception):
     """A query exceeded the database's statement timeout."""
 
 
-def get_database_url():
+def get_database_url() -> str:
     """Return DATABASE_URL from environment variables."""
     database_url = os.getenv("DATABASE_URL")
     if not database_url:
@@ -39,9 +35,6 @@ def get_database_url():
 @contextmanager
 def get_connection():
     """Context manager for PostgreSQL connections."""
-    if psycopg2 is None:
-        raise ImportError("psycopg2 not installed. Run: pip install psycopg2-binary")
-
     conn = psycopg2.connect(get_database_url())
     try:
         yield conn
@@ -58,47 +51,28 @@ def _execute_query(
     params: tuple = (),
     use_dict_cursor: bool = False,
     fetch_one: bool = False,
-    error_handler: Callable[[Exception], T] | None = None,
+    error_handler: Callable[[Exception], Any] | None = None,
 ) -> Any:
-    """Execute a database query and return results.
-
-    Args:
-        query: SQL query string
-        params: Query parameters
-        use_dict_cursor: If True, use RealDictCursor for dict results
-        fetch_one: If True, fetch one row; otherwise fetch all
-        error_handler: Optional function to handle errors, returns default value
-
-    Returns:
-        Query results (list of dicts, single dict, single value, True/False for write ops, or None)
-    """
+    """Run a query. Writes return whether any row was affected; reads return rows."""
     try:
         with get_connection() as conn:
-            cursor_factory = RealDictCursor if use_dict_cursor else None
-            cursor = conn.cursor(cursor_factory=cursor_factory)
+            cursor = conn.cursor(
+                cursor_factory=RealDictCursor if use_dict_cursor else None
+            )
             cursor.execute(query, params)
 
-            # Check if this is a write operation (INSERT, UPDATE, DELETE)
-            query_upper = query.strip().upper()
-            is_write_op = any(
-                query_upper.startswith(op) for op in ["INSERT", "UPDATE", "DELETE"]
-            )
-
-            if is_write_op:
-                # For write operations, return True if rows were affected, False otherwise
+            # DBAPI leaves description unset for statements with no result set (INSERT/UPDATE/DELETE).
+            if cursor.description is None:
                 return cursor.rowcount > 0
 
-            # For SELECT queries, fetch results as before
-            if fetch_one:
-                result = cursor.fetchone()
-                if use_dict_cursor and result:
-                    return dict(result)
-                return result[0] if result and not use_dict_cursor else result
-            else:
-                results = cursor.fetchall()
-                if use_dict_cursor:
-                    return [dict(row) for row in results]
-                return results
+            if not fetch_one:
+                rows = cursor.fetchall()
+                return [dict(row) for row in rows] if use_dict_cursor else rows
+
+            row = cursor.fetchone()
+            if use_dict_cursor:
+                return dict(row) if row else row
+            return row[0] if row else row
     except Exception as e:
         if error_handler:
             return error_handler(e)
@@ -106,9 +80,8 @@ def _execute_query(
 
 
 def _handle_timeout_error(e: Exception) -> None:
-    """Handle database timeout errors with user-friendly message."""
-    error_msg = str(e)
-    if "timeout" in error_msg.lower() or "57014" in error_msg:
+    """Re-raise a statement timeout with search advice; anything else unchanged."""
+    if "timeout" in str(e).lower() or "57014" in str(e):
         raise DatabaseTimeoutError(
             "Database query timed out. The database may be under heavy load. "
             "Please try:\n"
@@ -120,22 +93,15 @@ def _handle_timeout_error(e: Exception) -> None:
     raise e
 
 
-def _handle_st_error(operation: str, default_return: Any = None):
-    """Return error handler that logs to st.error and returns default value."""
+def _report(operation: str, default: Any = None, quiet: bool = False):
+    """Error handler that surfaces the failure and returns a default instead of raising."""
 
     def handler(e: Exception) -> Any:
-        st.error(f"Failed to {operation}: {e}")
-        return default_return
-
-    return handler
-
-
-def _handle_st_debug(operation: str, default_return: Any = None):
-    """Return error handler that logs to st.debug and returns default value."""
-
-    def handler(e: Exception) -> Any:
-        st.debug(f"Failed to {operation}: {e}")
-        return default_return
+        if quiet:
+            logger.warning("Failed to %s: %s", operation, e)
+        else:
+            st.error(f"Failed to {operation}: {e}")
+        return default
 
     return handler
 
@@ -164,24 +130,18 @@ def search_managers(query: str) -> list[dict]:
 
 def upsert_creator_team(team_data: dict) -> bool:
     """Insert or update a creator team in the creator_teams table."""
-    columns = list(team_data.keys())
-    values = [team_data[col] for col in columns]
-    placeholders = ", ".join(["%s"] * len(values))
-    column_names = ", ".join(columns)
+    columns = list(team_data)
     update_set = ", ".join(
-        [f"{col} = EXCLUDED.{col}" for col in columns if col != "team_id"]
+        f"{col} = EXCLUDED.{col}" for col in columns if col != "team_id"
     )
-
-    query = f"""
-        INSERT INTO creator_teams ({column_names})
-        VALUES ({placeholders})
-        ON CONFLICT (team_id) DO UPDATE SET {update_set}
-    """
-
     result = _execute_query(
-        query,
-        params=tuple(values),
-        error_handler=_handle_st_error("upsert creator team", False),
+        f"""
+        INSERT INTO creator_teams ({", ".join(columns)})
+        VALUES ({", ".join(["%s"] * len(columns))})
+        ON CONFLICT (team_id) DO UPDATE SET {update_set}
+        """,
+        params=tuple(team_data[col] for col in columns),
+        error_handler=_report("upsert creator team", False),
     )
     return result is not False
 
@@ -191,18 +151,7 @@ def get_creator_teams() -> list[dict]:
     return _execute_query(
         "SELECT * FROM creator_teams ORDER BY manager_name",
         use_dict_cursor=True,
-        error_handler=_handle_st_error("get creator teams", []),
-    )
-
-
-def get_creator_team(team_id: int) -> dict | None:
-    """Get a specific creator team by team_id."""
-    return _execute_query(
-        "SELECT * FROM creator_teams WHERE team_id = %s",
-        params=(team_id,),
-        use_dict_cursor=True,
-        fetch_one=True,
-        error_handler=_handle_st_error("get creator team", None),
+        error_handler=_report("get creator teams", []),
     )
 
 
@@ -211,7 +160,7 @@ def get_current_creator_gameweek() -> int | None:
     return _execute_query(
         "SELECT current_gameweek FROM creator_teams LIMIT 1",
         fetch_one=True,
-        error_handler=_handle_st_debug("get current creator gameweek", None),
+        error_handler=_report("get current creator gameweek", None, quiet=True),
     )
 
 
@@ -222,11 +171,5 @@ def get_manager_by_id(manager_id: int) -> dict | None:
         params=(manager_id,),
         use_dict_cursor=True,
         fetch_one=True,
-        error_handler=_handle_st_debug("get manager by ID", None),
+        error_handler=_report("get manager by ID", None, quiet=True),
     )
-
-
-# Legacy function for compatibility
-def get_client():
-    """Legacy function for compatibility. Returns None as we use direct connections now."""
-    return

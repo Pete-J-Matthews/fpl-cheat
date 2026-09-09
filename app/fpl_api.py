@@ -1,6 +1,4 @@
-"""
-Shared FPL API constants and utility functions.
-"""
+"""Shared FPL API constants and utility functions."""
 
 import requests
 
@@ -8,7 +6,6 @@ import requests
 FPL_API_BASE = "https://fantasy.premierleague.com/api"
 FPL_ENTRY_PICKS_URL = f"{FPL_API_BASE}/entry/{{manager_id}}/event/{{event_id}}/picks/"
 FPL_BOOTSTRAP_URL = f"{FPL_API_BASE}/bootstrap-static/"
-FPL_FIXTURES_URL = f"{FPL_API_BASE}/fixtures/"
 FPL_HEADERS = {
     "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36",
     "Referer": "https://fantasy.premierleague.com/",
@@ -64,19 +61,9 @@ def fetch_entry_picks(manager_id: int, event_id: int) -> dict | None:
 def build_element_lookup(
     bootstrap: dict, include_team_id: bool = False
 ) -> dict[int, dict[str, str]]:
-    """Build lookup dictionary for player elements.
-
-    Args:
-        bootstrap: Bootstrap data from FPL API
-        include_team_id: If True, include team_id in the lookup
-
-    Returns:
-        element_lookup[element_id] -> {name, position[, team_id]}
-    """
+    """element_lookup[element_id] -> {name, position[, team_id]}."""
     element_lookup: dict[int, dict[str, str]] = {}
-    elements = bootstrap.get("elements") or []
-
-    for e in elements:
+    for e in bootstrap.get("elements") or []:
         try:
             data = {
                 "name": str(e.get("web_name", "")),
@@ -87,5 +74,4 @@ def build_element_lookup(
             element_lookup[int(e["id"])] = data
         except Exception:
             continue
-
     return element_lookup

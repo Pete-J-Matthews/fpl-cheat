@@ -1,15 +1,15 @@
-"""
-CSS for FPL Cheat. Green + neutral theme, single content width, section cards, pill buttons.
-"""
+"""CSS for FPL Cheat. Green + neutral theme, single content width, section cards, pill buttons."""
+
+import base64
 
 # Theme: green background, neutral text/surfaces, Premier League–style purple accent
 FONT_DISPLAY = "Sora"
 FONT_BODY = "Source Sans 3"
 
 
-def get_app_css() -> str:
-    """Return raw CSS."""
-    return f"""
+def get_app_styles() -> str:
+    """HTML that injects the app CSS via a data URI."""
+    css = f"""
 @import url('https://fonts.googleapis.com/css2?family={FONT_DISPLAY.replace(" ", "+")}:wght@400;500;600;700&family={FONT_BODY.replace(" ", "+")}:wght@400;500;600;700&display=swap');
 :root{{
   --fpl-bg: #0d1f17;
@@ -112,13 +112,6 @@ section[data-testid="stHeader"],div[data-testid="stToolbar"],div[data-testid="st
 @media (max-width: 1024px){{
   .team-comparison-row{{flex-direction:column;}}
 }}
-"""
-
-
-def get_app_styles() -> str:
-    """Return HTML that injects app CSS via a data URI."""
-    import base64
-
-    css = get_app_css().strip()
+""".strip()
     b64 = base64.b64encode(css.encode("utf-8")).decode("ascii")
     return f'<link rel="stylesheet" href="data:text/css;base64,{b64}">'

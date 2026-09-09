@@ -1,137 +1,66 @@
-"""
-Rendering functions for displaying FPL team picks and player cards.
-"""
-
-import streamlit as st
+"""Rendering FPL team picks as pitch HTML."""
 
 from app.assets import get_jersey_b64
+from app.comparison import iter_creator_players
+
+LINES = ("GKP", "DEF", "MID", "FWD")
+PLACEHOLDER = (
+    '<p class="team-box-placeholder">👆 Select a creator team above to compare</p>'
+)
 
 
-@st.cache_data(show_spinner=False)
-def get_opponent_label(
-    player_team_id: int, fixtures: list[dict], team_lookup: dict[int, dict[str, str]]
-) -> str:
-    """Get opponent label for a player's team in the current gameweek."""
-    for fx in fixtures:
-        th = int(fx.get("team_h", 0))
-        ta = int(fx.get("team_a", 0))
-        if player_team_id == th:
-            opp = team_lookup.get(ta, {}).get("short_name", "")
-            return f"{opp} (H)" if opp else "H"
-        if player_team_id == ta:
-            opp = team_lookup.get(th, {}).get("short_name", "")
-            return f"{opp} (A)" if opp else "A"
-    # Could be blank GW; show just team short
-    short = team_lookup.get(player_team_id, {}).get("short_name", "")
-    return short
-
-
-def render_picks_table(picks: list[dict], element_lookup: dict[int, dict[str, str]]):
-    """Render picks as a simple table."""
-    rows = [
+def creator_team_to_picks(
+    creator_team: dict, element_lookup: dict[int, dict[str, str]]
+) -> list[dict]:
+    """Convert a creator team's player_1..player_15 strings into pick dicts."""
+    return [
         {
-            "player": element_lookup.get(p.get("element"), {}).get("name", ""),
-            "position": element_lookup.get(p.get("element"), {}).get("position", ""),
+            "element": element_id,
+            "position": slot,
+            "multiplier": 1 if slot <= 11 else 0,  # Starters have multiplier > 0
+            "is_captain": is_captain,
+            "is_vice_captain": is_vice,
         }
-        for p in picks
+        for slot, element_id, is_captain, is_vice in iter_creator_players(
+            creator_team, element_lookup
+        )
     ]
-    order = {"GKP": 0, "DEF": 1, "MID": 2, "FWD": 3}
-    rows.sort(key=lambda r: (order.get(r.get("position", ""), 99), r.get("player", "")))
-    st.table(rows)
 
 
-def _render_player_card(
-    col,
-    name: str,
-    position: str,
-    team_code: str,
-    is_captain: bool,
-    is_vice: bool,
-    team_short: str | None = None,
-):
-    """Render a single player card with jersey image."""
-    b64 = get_jersey_b64(team_short, position == "GKP")
-    if b64:
-        col.markdown(
-            f"""
-            <div class="player-card">
-                <img src="data:image/png;base64,{b64}" alt="{name}" />
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    else:
-        # Placeholder box if the jersey isn't available
-        col.markdown(
-            f"<div class='player-card'>shirt {team_code}</div>",
-            unsafe_allow_html=True,
-        )
-    # Display position in brackets at the start, then name
-    label = f"({position}) {name}" if position else name
-    if is_captain:
-        label += " (C)"
-    elif is_vice:
-        label += " (V)"
-    col.markdown(f"**{label}**")
-
-
-def _render_player_row(
-    picks: list[dict],
+def _card_html(
+    pick: dict,
     element_lookup: dict[int, dict[str, str]],
     team_lookup: dict[int, dict[str, str]],
-    fixtures: list[dict],
-):
-    """Helper to render a row of players."""
-    cols = st.columns(len(picks))
-    for idx, p in enumerate(picks):
-        el = int(p.get("element"))
-        meta = element_lookup.get(el, {})
-        team_id = int(meta.get("team_id", 0))
-        team_code = team_lookup.get(team_id, {}).get("code", "")
-        name = meta.get("name", "")
-        position = meta.get("position", "")
-        team_short = team_lookup.get(team_id, {}).get("short_name", "")
-        _render_player_card(
-            cols[idx],
-            name,
-            position,
-            str(team_code),
-            bool(p.get("is_captain")),
-            bool(p.get("is_vice_captain")),
-            team_short,
-        )
-
-
-def _player_card_html(
-    name: str,
-    position: str,
-    team_code: str,
-    is_captain: bool,
-    is_vice: bool,
-    team_short: str | None,
-    small: bool,
-    element_id: int,
     common_player_ids: set[int] | None,
 ) -> str:
-    """Return HTML for one player card (for use in pitch_as_html). Name on first row; position and captaincy on second for equal-sized pills."""
-    b64 = get_jersey_b64(team_short, position == "GKP")
-    img_html = (
+    """One player card: name on the first row, position and captaincy on the second."""
+    element_id = int(pick.get("element"))
+    meta = element_lookup.get(element_id, {})
+    name = meta.get("name", "")
+    position = meta.get("position", "")
+    team = team_lookup.get(int(meta.get("team_id", 0)), {})
+
+    b64 = get_jersey_b64(team.get("short_name", ""), position == "GKP")
+    img = (
         f'<img src="data:image/png;base64,{b64}" alt="{name}" />'
         if b64
-        else f"<span>shirt {team_code}</span>"
+        else f"<span>shirt {team.get('code', '')}</span>"  # Placeholder if the jersey isn't available
     )
-    meta_parts = [position] if position else []
-    if is_captain:
-        meta_parts.append("C")
-    elif is_vice:
-        meta_parts.append("V")
-    meta_text = " · ".join(meta_parts) if meta_parts else ""
-    cls = "player-card player-card--small" if small else "player-card"
+
+    labels = [position] if position else []
+    if pick.get("is_captain"):
+        labels.append("C")
+    elif pick.get("is_vice_captain"):
+        labels.append("V")
+
+    cls = "player-card player-card--small"
     if common_player_ids and element_id in common_player_ids:
         cls += " player-card--common"
-    name_line = f'<p class="player-label">{name}</p>'
-    meta_line = f'<p class="player-meta">{meta_text}</p>' if meta_text else ""
-    return f'<div class="player-cell"><div class="{cls}">{img_html}</div>{name_line}{meta_line}</div>'
+    meta_line = f'<p class="player-meta">{" · ".join(labels)}</p>' if labels else ""
+    return (
+        f'<div class="player-cell"><div class="{cls}">{img}</div>'
+        f'<p class="player-label">{name}</p>{meta_line}</div>'
+    )
 
 
 def pitch_as_html(
@@ -139,196 +68,30 @@ def pitch_as_html(
     element_lookup: dict[int, dict[str, str]],
     team_lookup: dict[int, dict[str, str]],
     title: str | None = None,
-    show_bench: bool = True,
-    small: bool = True,
     common_player_ids: set[int] | None = None,
 ) -> str:
-    """Return HTML for a team pitch (for embedding in team-box). Uses smaller cards when small=True."""
-    starters = [
-        p
-        for p in picks
-        if int(p.get("multiplier", 0)) > 0 and int(p.get("position", 0)) <= 11
-    ]
+    """HTML for a team pitch (starters by line, then bench), for embedding in a team-box."""
+
+    def row(row_picks: list[dict]) -> str:
+        cards = "".join(
+            _card_html(p, element_lookup, team_lookup, common_player_ids)
+            for p in row_picks
+        )
+        return f'<div class="pitch-row">{cards}</div>'
+
+    lines: dict[str, list[dict]] = {pos: [] for pos in LINES}
+    for p in picks:
+        if int(p.get("multiplier", 0)) > 0 and int(p.get("position", 0)) <= 11:
+            pos = element_lookup.get(int(p.get("element")), {}).get("position", "")
+            lines.setdefault(pos, []).append(p)
     bench = sorted(
-        [p for p in picks if int(p.get("position", 0)) >= 12],
-        key=lambda x: int(x.get("position", 0)),
+        (p for p in picks if int(p.get("position", 0)) >= 12),
+        key=lambda p: int(p.get("position", 0)),
     )
-    lines: dict[str, list[dict]] = {"GKP": [], "DEF": [], "MID": [], "FWD": []}
-    for p in starters:
-        el = int(p.get("element"))
-        meta = element_lookup.get(el, {})
-        pos = meta.get("position", "")
-        lines.setdefault(pos, []).append(p)
-    parts = []
-    if title:
-        parts.append(f'<p class="team-box-title"><strong>{title}</strong></p>')
-    for pos in ["GKP", "DEF", "MID", "FWD"]:
-        row = lines.get(pos, [])
-        if row:
-            row_html = []
-            for p in row:
-                el = int(p.get("element"))
-                meta = element_lookup.get(el, {})
-                team_id = int(meta.get("team_id", 0))
-                team_code = team_lookup.get(team_id, {}).get("code", "")
-                name = meta.get("name", "")
-                position = meta.get("position", "")
-                team_short = team_lookup.get(team_id, {}).get("short_name", "")
-                row_html.append(
-                    _player_card_html(
-                        name,
-                        position,
-                        str(team_code),
-                        bool(p.get("is_captain")),
-                        bool(p.get("is_vice_captain")),
-                        team_short,
-                        small,
-                        element_id=el,
-                        common_player_ids=common_player_ids,
-                    )
-                )
-            parts.append(f'<div class="pitch-row">{"".join(row_html)}</div>')
-    if show_bench and bench:
+
+    parts = [f'<p class="team-box-title"><strong>{title}</strong></p>'] if title else []
+    parts += [row(lines[pos]) for pos in LINES if lines[pos]]
+    if bench:
         parts.append('<p class="team-box-bench"><strong>Bench:</strong></p>')
-        bench_html = []
-        for p in bench:
-            el = int(p.get("element"))
-            meta = element_lookup.get(el, {})
-            team_id = int(meta.get("team_id", 0))
-            team_code = team_lookup.get(team_id, {}).get("code", "")
-            name = meta.get("name", "")
-            position = meta.get("position", "")
-            team_short = team_lookup.get(team_id, {}).get("short_name", "")
-            bench_html.append(
-                _player_card_html(
-                    name,
-                    position,
-                    str(team_code),
-                    bool(p.get("is_captain")),
-                    bool(p.get("is_vice_captain")),
-                    team_short,
-                    small,
-                    element_id=el,
-                    common_player_ids=common_player_ids,
-                )
-            )
-        parts.append(f'<div class="pitch-row">{"".join(bench_html)}</div>')
+        parts.append(row(bench))
     return "".join(parts)
-
-
-def creator_team_to_picks(
-    creator_team: dict, element_lookup: dict[int, dict[str, str]]
-) -> list[dict]:
-    """
-    Convert creator team data (player_1 through player_15 strings) to picks format.
-
-    Args:
-        creator_team: Dict with player_1 through player_15 keys
-        element_lookup: Element lookup dict
-
-    Returns:
-        List of pick dicts in format compatible with render_pitch
-    """
-    picks = []
-
-    # Create reverse lookup: name -> element_id
-    name_to_id = {}
-    for element_id, data in element_lookup.items():
-        name = data.get("name", "").strip()
-        if name:
-            name_to_id[name.lower()] = element_id
-
-    # Parse each player string
-    for i in range(1, 16):
-        player_str = creator_team.get(f"player_{i}")
-        if not player_str:
-            continue
-
-        # Parse format: "Name (POS)" or "Name (POS) (C)" or "Name (POS) (VC)"
-        # Extract name (everything before first "(")
-        name_part = player_str.split("(")[0].strip()
-        if not name_part:
-            continue
-
-        # Extract position and captaincy
-        is_captain = "(C)" in player_str
-        is_vice_captain = "(VC)" in player_str
-
-        # Find element ID
-        element_id = None
-        # Try exact match first
-        element_id = name_to_id.get(name_part.lower())
-        if not element_id:
-            # Try partial match
-            for lookup_name, lookup_id in name_to_id.items():
-                if lookup_name.startswith(
-                    name_part.lower()
-                ) or name_part.lower().startswith(lookup_name):
-                    element_id = lookup_id
-                    break
-
-        if element_id:
-            # Create pick dict
-            pick = {
-                "element": element_id,
-                "position": i,
-                "multiplier": 1 if i <= 11 else 0,  # Starters have multiplier > 0
-                "is_captain": is_captain,
-                "is_vice_captain": is_vice_captain,
-            }
-            picks.append(pick)
-
-    return picks
-
-
-def render_pitch(
-    picks: list[dict],
-    element_lookup: dict[int, dict[str, str]],
-    team_lookup: dict[int, dict[str, str]],
-    fixtures: list[dict],
-    show_bench: bool = True,
-    title: str | None = None,
-):
-    """Render team picks in a pitch formation layout.
-
-    Args:
-        picks: List of pick dicts
-        element_lookup: Element lookup dict
-        team_lookup: Team lookup dict
-        fixtures: List of fixture dicts
-        show_bench: Whether to show bench players
-        title: Optional title to display above the pitch
-    """
-    if title:
-        st.markdown(f"**{title}**")
-
-    starters = [
-        p
-        for p in picks
-        if int(p.get("multiplier", 0)) > 0 and int(p.get("position", 0)) <= 11
-    ]
-    bench = sorted(
-        [p for p in picks if int(p.get("position", 0)) >= 12],
-        key=lambda x: int(x.get("position", 0)),
-    )
-
-    lines: dict[str, list[dict]] = {"GKP": [], "DEF": [], "MID": [], "FWD": []}
-    for p in starters:
-        el = int(p.get("element"))
-        meta = element_lookup.get(el, {})
-        pos = meta.get("position", "")
-        lines.setdefault(pos, []).append(p)
-
-    # Render each line in GKP->FWD order with reduced spacing
-    for pos in ["GKP", "DEF", "MID", "FWD"]:
-        row = lines.get(pos, [])
-        if row:
-            _render_player_row(row, element_lookup, team_lookup, fixtures)
-            # Reduce spacing between rows
-            st.markdown(
-                "<div style='margin-bottom: -0.5rem;'></div>", unsafe_allow_html=True
-            )
-
-    if show_bench and bench:
-        st.markdown("**Bench:**")
-        _render_player_row(bench, element_lookup, team_lookup, fixtures)

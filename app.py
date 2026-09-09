@@ -13,7 +13,6 @@ from app.cache import (
     build_lookups,
     fetch_bootstrap_cached,
     fetch_entry_picks_cached,
-    fetch_fixtures,
     get_current_event_id_cached,
 )
 from app.components import (
@@ -21,7 +20,7 @@ from app.components import (
     render_similar_teams,
     run_compare_if_needed,
 )
-from app.rendering import creator_team_to_picks, pitch_as_html
+from app.rendering import PLACEHOLDER, creator_team_to_picks, pitch_as_html
 from app.scheduler import is_scheduler_running, start_scheduler
 from app.styles import get_app_styles
 
@@ -33,6 +32,113 @@ st.set_page_config(
 
 if not is_scheduler_running():
     start_scheduler()
+
+
+def _element_ids(picks: list[dict]) -> set[int]:
+    return {int(p["element"]) for p in picks if p.get("element") is not None}
+
+
+def render_comparison(
+    user_picks: list[dict],
+    element_lookup: dict[int, dict[str, str]],
+    team_lookup: dict[int, dict[str, str]],
+    event_id: int,
+    creator_team: dict | None = None,
+) -> None:
+    """Render the Team Comparison card: the user's pitch beside the selected creator's, or a placeholder."""
+    common_player_ids = None
+    creator_html = PLACEHOLDER
+    if creator_team:
+        creator_picks = creator_team_to_picks(creator_team, element_lookup)
+        common_player_ids = _element_ids(user_picks) & _element_ids(creator_picks)
+        creator_html = pitch_as_html(
+            creator_picks,
+            element_lookup,
+            team_lookup,
+            title=creator_team.get("manager_name", "Creator Team"),
+            common_player_ids=common_player_ids,
+        )
+    user_html = pitch_as_html(
+        user_picks,
+        element_lookup,
+        team_lookup,
+        title="Your Team",
+        common_player_ids=common_player_ids,
+    )
+    st.markdown(
+        f'<div class="section-card team-comparison-section">'
+        f'<div class="section-header-row">'
+        f'<h3 class="section-title" id="team-comparison">Team Comparison</h3>'
+        f'<span class="section-gw">Gameweek {event_id}</span>'
+        f"</div>"
+        f'<div class="team-comparison-row">'
+        f'<div class="team-box">{user_html}</div>'
+        f'<div class="team-box">{creator_html}</div>'
+        f"</div></div>",
+        unsafe_allow_html=True,
+    )
+
+
+@st.fragment
+def select_team_section():
+    """Isolated fragment so typing only reruns this block, not the whole page."""
+    st.session_state.setdefault("manager_id", None)
+
+    def _on_manager_submit(manager_id_value):
+        """After selecting a manager, set search bar to the selected label and clear options."""
+        key = "manager_searchbox"
+        if key not in st.session_state:
+            return
+        opts_py = st.session_state[key].get("options_py", [])
+        opts_js = st.session_state[key].get("options_js", [])
+        try:
+            label = opts_js[opts_py.index(manager_id_value)]["label"]
+        except (ValueError, IndexError, KeyError):
+            label = f"Manager ID {manager_id_value}"
+        st.session_state[key]["search"] = label
+        st.session_state[key]["options_js"] = []
+        st.session_state[key]["options_py"] = []
+        # Force component to remount so it shows the new default_searchterm (selected name)
+        st.session_state[key]["key_react"] = f"{key}_react_{time.time()}"
+        st.rerun()
+
+    st.markdown(
+        '<p class="search-section-label">Search by team name, manager name, or manager ID</p>',
+        unsafe_allow_html=True,
+    )
+    with st.container(key="search_clear_row"):
+        search_col, clear_col = st.columns([5, 1], vertical_alignment="top")
+        with search_col:
+            selected_value = st_searchbox(
+                manager_searchbox_options,
+                placeholder="e.g. Gary Lineker or 9416474",
+                key="manager_searchbox",
+                clear_on_submit=False,  # we set search term in submit_function instead
+                default_options=[],
+                default_searchterm=st.session_state.get("manager_searchbox", {}).get(
+                    "search", ""
+                ),  # show selected name after submit
+                submit_function=_on_manager_submit,
+                rerun_scope="fragment",  # only this fragment reruns on keystroke, not whole app
+                style_overrides={
+                    "searchbox": {
+                        # Show empty-state message when dropdown opens (e.g. "No matches" until user types or when no matches)
+                        "menuList": {"minHeight": 0, "maxHeight": "none"},
+                    },
+                },
+            )
+            if selected_value is not None:
+                st.session_state.manager_id = int(selected_value)
+        with clear_col:
+            if st.button(
+                "Clear",
+                key="clear_manager",
+                use_container_width=True,
+                disabled=not st.session_state.manager_id,
+            ):
+                st.session_state.manager_id = None
+                st.session_state.pop("manager_searchbox", None)
+                st.rerun()
 
 
 def main():
@@ -58,195 +164,50 @@ def main():
         unsafe_allow_html=True,
     )
 
-    event_id = get_current_event_id_cached()
+    event_id = int(get_current_event_id_cached())
 
     # --- Section 1: Select Your Team ---
     st.markdown("### Select Your Team")
-
-    @st.fragment
-    def select_team_section():
-        """Isolated fragment so typing only reruns this block, not the whole page."""
-        if "manager_id" not in st.session_state:
-            st.session_state.manager_id = None
-
-        def _on_manager_submit(manager_id_value):
-            """After selecting a manager, set search bar to the selected label and clear options."""
-            key = "manager_searchbox"
-            if key not in st.session_state:
-                return
-            opts_py = st.session_state[key].get("options_py", [])
-            opts_js = st.session_state[key].get("options_js", [])
-            try:
-                idx = opts_py.index(manager_id_value)
-                label = opts_js[idx]["label"]
-            except (ValueError, IndexError, KeyError):
-                label = f"Manager ID {manager_id_value}"
-            st.session_state[key]["search"] = label
-            st.session_state[key]["options_js"] = []
-            st.session_state[key]["options_py"] = []
-            # Force component to remount so it shows the new default_searchterm (selected name)
-            st.session_state[key]["key_react"] = f"{key}_react_{time.time()}"
-            st.rerun()
-
-        st.markdown(
-            '<p class="search-section-label">Search by team name, manager name, or manager ID</p>',
-            unsafe_allow_html=True,
-        )
-        with st.container(key="search_clear_row"):
-            search_col, clear_col = st.columns([5, 1], vertical_alignment="top")
-            with search_col:
-                selected_value = st_searchbox(
-                    manager_searchbox_options,
-                    placeholder="e.g. Gary Lineker or 9416474",
-                    key="manager_searchbox",
-                    clear_on_submit=False,  # we set search term in submit_function instead
-                    default_options=[],
-                    default_searchterm=st.session_state.get(
-                        "manager_searchbox", {}
-                    ).get("search", ""),  # show selected name after submit
-                    submit_function=_on_manager_submit,
-                    rerun_scope="fragment",  # only this fragment reruns on keystroke, not whole app
-                    style_overrides={
-                        "searchbox": {
-                            # Show empty-state message when dropdown opens (e.g. "No matches" until user types or when no matches)
-                            "menuList": {"minHeight": 0, "maxHeight": "none"},
-                        },
-                    },
-                )
-                if selected_value is not None:
-                    st.session_state.manager_id = int(selected_value)
-            with clear_col:
-                if st.button(
-                    "Clear",
-                    key="clear_manager",
-                    use_container_width=True,
-                    disabled=not st.session_state.manager_id,
-                ):
-                    st.session_state.manager_id = None
-                    if "manager_searchbox" in st.session_state:
-                        del st.session_state["manager_searchbox"]
-                    st.rerun()
-
     select_team_section()
-
     manager_id = st.session_state.manager_id
 
-    # Load team data when manager is selected
-    user_picks = None
-    element_lookup = None
-    team_lookup = None
-    fixtures = None
+    # Load team data when a manager is selected
+    user_picks, element_lookup, team_lookup = None, None, None
     if manager_id:
         with st.spinner("Loading team..."):
-            data = fetch_entry_picks_cached(manager_id, int(event_id))
-        if data:
-            user_picks = data.get("picks") or []
-            if not user_picks:
-                st.warning("No picks found.")
-            else:
-                bootstrap = fetch_bootstrap_cached()
-                if bootstrap:
-                    element_lookup, team_lookup = build_lookups(bootstrap)
-                    fixtures = fetch_fixtures(int(event_id))
+            data = fetch_entry_picks_cached(manager_id, event_id)
+        user_picks = (data or {}).get("picks") or None
+        if data and not user_picks:
+            st.warning("No picks found.")
+        if user_picks:
+            bootstrap = fetch_bootstrap_cached()
+            if bootstrap:
+                element_lookup, team_lookup = build_lookups(bootstrap)
 
-    # Run comparison automatically when a manager is selected and team is loaded
-    if user_picks and element_lookup:
-        run_compare_if_needed(user_picks, element_lookup, int(event_id), manager_id)
+    if not (user_picks and element_lookup and team_lookup):
+        return
+
+    # Comparison runs automatically once a manager is selected; no button.
+    run_compare_if_needed(user_picks, element_lookup, manager_id)
 
     # --- Section 2: Similar Teams (only when results exist); Section 3: Team Comparison ---
-    # When we have comparison results, wrap pills + comparison in a fragment so pill clicks
-    # only rerun that block (no full page refresh).
-    if user_picks and element_lookup and team_lookup and fixtures:
-        has_comparison_results = bool(st.session_state.get("comparison_results"))
+    # With results, pills + comparison share a fragment so pill clicks only rerun that
+    # block rather than refreshing the whole page.
+    if st.session_state.get("comparison_results"):
 
-        if has_comparison_results:
-
-            @st.fragment
-            def similar_teams_and_comparison():
-                selected_creator_team = render_similar_teams()
-                if selected_creator_team:
-                    creator_picks = creator_team_to_picks(
-                        selected_creator_team, element_lookup
-                    )
-                    manager_name = selected_creator_team.get(
-                        "manager_name", "Creator Team"
-                    )
-                    user_player_ids = {
-                        int(p.get("element"))
-                        for p in user_picks
-                        if p.get("element") is not None
-                    }
-                    creator_player_ids = {
-                        int(p.get("element"))
-                        for p in creator_picks
-                        if p.get("element") is not None
-                    }
-                    common_player_ids = user_player_ids & creator_player_ids
-                    team1_html = pitch_as_html(
-                        user_picks,
-                        element_lookup,
-                        team_lookup,
-                        title="Your Team",
-                        show_bench=True,
-                        small=True,
-                        common_player_ids=common_player_ids,
-                    )
-                    team2_html = pitch_as_html(
-                        creator_picks,
-                        element_lookup,
-                        team_lookup,
-                        title=manager_name,
-                        show_bench=True,
-                        small=True,
-                        common_player_ids=common_player_ids,
-                    )
-                else:
-                    team1_html = pitch_as_html(
-                        user_picks,
-                        element_lookup,
-                        team_lookup,
-                        title="Your Team",
-                        show_bench=True,
-                        small=True,
-                    )
-                    team2_html = '<p class="team-box-placeholder">👆 Select a creator team above to compare</p>'
-                st.markdown(
-                    f'<div class="section-card team-comparison-section">'
-                    f'<div class="section-header-row">'
-                    f'<h3 class="section-title" id="team-comparison">Team Comparison</h3>'
-                    f'<span class="section-gw">Gameweek {event_id}</span>'
-                    f"</div>"
-                    f'<div class="team-comparison-row">'
-                    f'<div class="team-box">{team1_html}</div>'
-                    f'<div class="team-box">{team2_html}</div>'
-                    f"</div></div>",
-                    unsafe_allow_html=True,
-                )
-
-            similar_teams_and_comparison()
-        else:
-            # No similar teams yet; show comparison section with placeholder only
-            team1_html = pitch_as_html(
+        @st.fragment
+        def similar_teams_and_comparison():
+            render_comparison(
                 user_picks,
                 element_lookup,
                 team_lookup,
-                title="Your Team",
-                show_bench=True,
-                small=True,
+                event_id,
+                render_similar_teams(),
             )
-            team2_html = '<p class="team-box-placeholder">👆 Select a creator team above to compare</p>'
-            st.markdown(
-                f'<div class="section-card team-comparison-section">'
-                f'<div class="section-header-row">'
-                f'<h3 class="section-title" id="team-comparison">Team Comparison</h3>'
-                f'<span class="section-gw">Gameweek {event_id}</span>'
-                f"</div>"
-                f'<div class="team-comparison-row">'
-                f'<div class="team-box">{team1_html}</div>'
-                f'<div class="team-box">{team2_html}</div>'
-                f"</div></div>",
-                unsafe_allow_html=True,
-            )
+
+        similar_teams_and_comparison()
+    else:
+        render_comparison(user_picks, element_lookup, team_lookup, event_id)
 
 
 if __name__ == "__main__":

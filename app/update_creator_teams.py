@@ -14,40 +14,6 @@ from app.fpl_api import (
     get_current_event_id,
 )
 
-CREATOR_TEAM_IDS = [
-    44,
-    200,
-    1320,
-    1587,
-    14501,
-    16267,
-    6586,
-    441,
-    1924811,
-    1514450,
-    260,
-    341,
-    135,
-    7577129,
-    16725,
-    3570,
-    17614,
-    963,
-    251,
-    698910,
-    2253812,
-    2869,
-    2140,
-    2974,
-    1536,
-    68585,
-    156,
-    11539,
-    24194,
-    9505,
-    20360,
-]
-
 TEAM_INFO = {
     44: "Lets Talk FPL",
     200: "FPL Focal",
@@ -82,6 +48,9 @@ TEAM_INFO = {
     20360: "Andy Martin FPL",
 }
 
+CREATOR_TEAM_IDS = list(TEAM_INFO)
+REQUEST_GAP = 0.5  # Seconds between FPL calls, to stay under its rate limit
+
 
 def format_player(
     element_id: int, is_captain: bool, is_vice_captain: bool, lookup: dict
@@ -106,58 +75,45 @@ def get_manager_name(team_id: int) -> str:
     )
 
 
-def update_all_creator_teams(progress_callback=None) -> dict[str, int]:
-    """Update all creator teams using CREATOR_TEAM_IDS."""
-    return update_creator_teams(CREATOR_TEAM_IDS, progress_callback)
-
-
-def update_creator_teams(
-    creator_team_ids: list[int], progress_callback=None
+def _result(
+    success: int, failed: int, total: int, already_up_to_date: bool = False
 ) -> dict[str, int]:
-    """Update creator teams in the database."""
-    if not creator_team_ids:
-        return {"success": 0, "failed": 0, "total": 0, "already_up_to_date": False}
+    return {
+        "success": success,
+        "failed": failed,
+        "total": total,
+        "already_up_to_date": already_up_to_date,
+    }
+
+
+def update_all_creator_teams(progress_callback=None) -> dict[str, int]:
+    """Fetch and store this gameweek's squad for every creator team."""
+    progress = progress_callback or (lambda _message: None)
+    total = len(CREATOR_TEAM_IDS)
 
     current_gw = get_current_event_id()
-    if progress_callback:
-        progress_callback(f"Checking current gameweek: {current_gw}")
-
+    progress(f"Checking current gameweek: {current_gw}")
     if get_current_creator_gameweek() == current_gw:
-        return {
-            "success": 0,
-            "failed": 0,
-            "total": len(creator_team_ids),
-            "already_up_to_date": True,
-        }
+        return _result(0, 0, total, already_up_to_date=True)
 
-    if progress_callback:
-        progress_callback(f"Updating for gameweek {current_gw}...")
-
+    progress(f"Updating for gameweek {current_gw}...")
     bootstrap = fetch_bootstrap()
     if not bootstrap:
-        if progress_callback:
-            progress_callback("Error: Failed to fetch bootstrap data")
-        return {
-            "success": 0,
-            "failed": len(creator_team_ids),
-            "total": len(creator_team_ids),
-        }
+        progress("Error: Failed to fetch bootstrap data")
+        return _result(0, total, total)
 
     element_lookup = build_element_lookup(bootstrap)
     success_count = failed_count = 0
 
-    for idx, team_id in enumerate(creator_team_ids):
+    for idx, team_id in enumerate(CREATOR_TEAM_IDS, start=1):
         manager_name = get_manager_name(team_id)
-        if progress_callback:
-            progress_callback(
-                f"Updating {idx + 1}/{len(creator_team_ids)}: {manager_name}"
-            )
+        progress(f"Updating {idx}/{total}: {manager_name}")
 
         picks_data = fetch_entry_picks(team_id, current_gw)
-        picks = picks_data.get("picks") if picks_data else []
+        picks = (picks_data or {}).get("picks") or []
         if not picks:
             failed_count += 1
-            time.sleep(0.5)
+            time.sleep(REQUEST_GAP)
             continue
 
         team_data = {
@@ -166,11 +122,10 @@ def update_creator_teams(
             "current_gameweek": current_gw,
             **{f"player_{i}": None for i in range(1, 16)},
         }
-
         for pick in picks:
-            pos = int(pick.get("position", 0))
-            if 1 <= pos <= 15:
-                team_data[f"player_{pos}"] = format_player(
+            slot = int(pick.get("position", 0))
+            if 1 <= slot <= 15:
+                team_data[f"player_{slot}"] = format_player(
                     int(pick.get("element", 0)),
                     bool(pick.get("is_captain", False)),
                     bool(pick.get("is_vice_captain", False)),
@@ -181,11 +136,6 @@ def update_creator_teams(
             success_count += 1
         else:
             failed_count += 1
-        time.sleep(0.5)
+        time.sleep(REQUEST_GAP)
 
-    return {
-        "success": success_count,
-        "failed": failed_count,
-        "total": len(creator_team_ids),
-        "already_up_to_date": False,
-    }
+    return _result(success_count, failed_count, total)
